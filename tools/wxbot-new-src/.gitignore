@@ -1,0 +1,44 @@
+# IDE
+.idea
+.vscode
+.cursor
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+build
+dist
+out/
+
+# Logs
+*.log
+app_logs/
+wechat_service.log
+
+# Database
+*.db
+*.db-journal
+
+# Environment
+.env
+
+# OS
+.DS_Store
+
+# Project specific
+upload/
+redis_data/
+
+# Python (for reference)
+pythondemo.py
+__pycache__/
+*.pyc
+
+# Go
+vendor/
+go.sum
+config.json
+logs/
+libs/

@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+
+# runtime / logs / local data
+logs/
+/runtime/
+data/
+exports/
+backup-before-restore-*/
+
+# secrets
+.env
+.env.*
+config.wxbot-new.json
+**/credentials*.json
+
+# large local binaries (install separately)
+Weixin_*.exe
+NoveHelper.dll
+NoveLoader.dll
+tools/wxbot-new-runtime/wxbot.exe
+tools/wxbot-new-runtime/*.dll
+tools/wxbot-new-runtime/uploads/
+tools/wxbot-new-runtime/logs/
+
+# electron-builder output
+dist/
+
+# test / simulation reports
+reports/
+
+# local archives
+*.zip
+
+# misc
+_in.txt
+*.log
+.DS_Store
+Thumbs.db

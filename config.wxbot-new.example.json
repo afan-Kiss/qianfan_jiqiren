@@ -1,0 +1,19 @@
+{
+  "ui": {
+    "autoStart": false
+  },
+  "qianfanDebug": {
+    "enabled": true,
+    "devtoolsPort": 9223,
+    "devtoolsHost": "127.0.0.1",
+    "qianfanClientExePath": "E:\\千帆\\eva\\千帆客服工作台.exe",
+    "qianfanClientWorkingDir": "E:\\千帆\\eva",
+    "qianfanClientProcessName": "千帆客服工作台.exe",
+    "autoLaunchQianfanClientWhenMissing": true,
+    "autoCloseExistingQianfanClient": true,
+    "expectedShopCount": 4,
+    "waitTimeoutMs": 60000,
+    "checkIntervalMs": 2000,
+    "closeWaitMs": 2000
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "smoke-1day",
+  "days": 1,
+  "seed": 1001,
+  "profile": {
+    "buyerMessagesPerDay": 10,
+    "replyRate": 0.8,
+    "duplicateRate": 0.2,
+    "outOfOrderRate": 0.05,
+    "qianfanFailRate": 0.1,
+    "wechatNotifyFailRate": 0.05,
+    "crashRate": 0.01,
+    "timeoutRate": 0.01,
+    "persistenceDelayRate": 0.01
+  }
+}

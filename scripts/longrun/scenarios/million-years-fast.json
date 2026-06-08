@@ -1,0 +1,19 @@
+{
+  "name": "million-years-fast",
+  "days": 365000000,
+  "seed": 4004,
+  "fastMode": true,
+  "sampleIterations": 1000,
+  "virtualBatchDays": 365000,
+  "profile": {
+    "buyerMessagesPerDay": 5,
+    "replyRate": 0.7,
+    "duplicateRate": 0.2,
+    "outOfOrderRate": 0.05,
+    "qianfanFailRate": 0.08,
+    "wechatNotifyFailRate": 0.04,
+    "crashRate": 0.01,
+    "timeoutRate": 0.01,
+    "persistenceDelayRate": 0.01
+  }
+}

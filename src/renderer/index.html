@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob: https: http:">
+  <title>千帆客服台机器人</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand">
+        <h1>千帆客服台机器人</h1>
+        <p class="subtitle">把千帆消息转到微信，也能从微信回复买家</p>
+      </div>
+      <button id="btn-settings" type="button" class="btn btn-ghost">设置</button>
+    </header>
+
+    <main class="content">
+      <section class="hero-card" id="hero-card">
+        <div class="hero-head">
+          <h2 id="main-status-title">中转未启动</h2>
+          <p id="main-status-desc" class="hero-desc">点击下方按钮开始中转</p>
+        </div>
+
+        <div id="hero-hint" class="hero-hint hidden">
+          <p id="hero-hint-text"></p>
+          <button id="btn-select-notifier-hero" type="button" class="btn btn-primary">选择通知人</button>
+        </div>
+
+        <div id="progress-panel" class="progress-panel hidden" aria-live="polite">
+          <p class="progress-label">当前进度</p>
+          <ul id="progress-steps" class="progress-steps"></ul>
+        </div>
+
+        <div class="hero-actions">
+          <button id="btn-start" type="button" class="btn btn-primary btn-lg">启动中转</button>
+          <button id="btn-stop" type="button" class="btn btn-lg" disabled>停止中转</button>
+          <button id="btn-check" type="button" class="btn btn-lg">检查环境</button>
+        </div>
+      </section>
+
+      <section class="stat-grid">
+        <article class="stat-card" id="card-wechat">
+          <h3>微信</h3>
+          <p class="stat-value" id="wechat-text">还没检查</p>
+        </article>
+        <article class="stat-card" id="card-qianfan">
+          <h3>千帆客服台</h3>
+          <p class="stat-value" id="qianfan-text">还没检查</p>
+        </article>
+        <article class="stat-card stat-card-action" id="card-notifier">
+          <h3>通知人</h3>
+          <p class="stat-badge" id="notifier-badge">未设置</p>
+          <p class="stat-value" id="notifier-text">还没有选择接收通知的微信好友</p>
+          <button id="btn-notifier-card" type="button" class="btn btn-sm">选择通知人</button>
+        </article>
+        <article class="stat-card" id="card-today">
+          <h3>今日转发</h3>
+          <p class="stat-value" id="today-forward-text">今日已转发 0 条</p>
+          <p class="stat-sub" id="today-reply-text">今日已回复 0 条</p>
+        </article>
+      </section>
+
+      <section class="activity-card">
+        <div class="section-head">
+          <h3>最近动态</h3>
+          <p id="last-message" class="last-message hidden"></p>
+        </div>
+        <div class="activity-scroll">
+          <ul id="activity-list" class="activity-list"></ul>
+          <p id="activity-empty" class="activity-empty">还没有转发记录，启动后这里会显示最近情况。</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="settings-overlay" class="overlay hidden" aria-hidden="true">
+    <div class="drawer" role="dialog" aria-labelledby="settings-title" aria-modal="true">
+      <div class="drawer-head">
+        <h2 id="settings-title">设置</h2>
+        <button id="btn-close-settings" type="button" class="btn btn-ghost btn-icon" aria-label="关闭设置">×</button>
+      </div>
+      <div class="drawer-body">
+        <section class="setting-block">
+          <h3>通知人</h3>
+          <p class="setting-hint">选择接收千帆新消息的微信好友</p>
+          <button id="btn-open-notifier-from-settings" type="button" class="btn btn-primary">选择 / 修改通知人</button>
+        </section>
+        <section class="setting-block">
+          <h3>自动启动</h3>
+          <label class="switch-row">
+            <input id="auto-start-toggle" type="checkbox">
+            <span class="switch-ui"></span>
+            <span>打开软件后自动启动中转</span>
+          </label>
+          <p class="setting-hint">打开后，下次启动软件会自动开始工作</p>
+        </section>
+        <section class="setting-block">
+          <h3>文件位置</h3>
+          <div class="btn-row">
+            <button id="btn-open-config" type="button" class="btn">打开配置目录</button>
+            <button id="btn-open-logs" type="button" class="btn">打开日志目录</button>
+          </div>
+        </section>
+        <section class="setting-block">
+          <button id="btn-advanced-toggle" type="button" class="advanced-toggle" aria-expanded="false">
+            高级信息
+            <span class="chevron">›</span>
+          </button>
+          <div id="advanced-panel" class="advanced-panel hidden">
+            <dl class="info-dl">
+              <div><dt>应用版本</dt><dd id="adv-version">-</dd></div>
+              <div><dt>配置目录</dt><dd id="adv-config-dir" class="mono">-</dd></div>
+              <div><dt>日志目录</dt><dd id="adv-logs-dir" class="mono">-</dd></div>
+              <div><dt>当前模式</dt><dd id="adv-mode">Electron 界面壳</dd></div>
+            </dl>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="notifier-overlay" class="overlay hidden" aria-hidden="true">
+    <div class="drawer drawer-wide" role="dialog" aria-labelledby="notifier-title" aria-modal="true">
+      <div id="notifier-picker-view">
+        <div class="drawer-head">
+          <h2 id="notifier-title">选择微信通知人</h2>
+          <button id="btn-close-notifier" type="button" class="btn btn-ghost btn-icon" aria-label="关闭">×</button>
+        </div>
+        <div class="drawer-body">
+          <p class="setting-hint">选择一个微信好友，千帆有新消息时会通知到这个微信。</p>
+
+          <section class="setting-block">
+            <h3>微信好友</h3>
+            <p id="friends-loading" class="empty-hint hidden">正在连接微信助手…</p>
+            <p id="friends-status" class="friends-status hidden"></p>
+            <ul id="friends-list" class="friend-list"></ul>
+            <p id="friends-empty" class="empty-hint hidden">正在加载微信好友…</p>
+          </section>
+
+          <section class="setting-block">
+            <h3>已添加的通知人</h3>
+            <p class="setting-hint">删除通知人仅移除通知资格，不会删除微信好友</p>
+            <ul id="draft-notifier-list" class="notifier-manage-list"></ul>
+            <p id="draft-notifier-empty" class="empty-hint">还没有添加通知人</p>
+          </section>
+
+          <section class="setting-block">
+            <button id="btn-manual-toggle" type="button" class="advanced-toggle" aria-expanded="false">
+              高级添加
+              <span class="chevron">›</span>
+            </button>
+            <div id="manual-panel" class="advanced-panel hidden">
+              <p class="setting-hint">只有好友列表加载不到时，才需要手动填写 wxid。</p>
+              <div class="input-row">
+                <input id="manual-wxid" type="text" placeholder="输入 wxid" autocomplete="off">
+              </div>
+              <div class="input-row" style="margin-top:8px">
+                <input id="manual-nickname" type="text" placeholder="输入昵称（可选）" autocomplete="off">
+                <button id="btn-manual-add" type="button" class="btn">添加</button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="drawer-footer">
+          <span id="draft-count-text">已添加 0 个通知人</span>
+          <div class="btn-row">
+            <button id="btn-save-notifiers" type="button" class="btn btn-primary">保存</button>
+            <button id="btn-cancel-notifiers" type="button" class="btn">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

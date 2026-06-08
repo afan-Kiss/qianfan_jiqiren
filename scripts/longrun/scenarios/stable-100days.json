@@ -1,0 +1,16 @@
+{
+  "name": "stable-100days",
+  "days": 100,
+  "seed": 2002,
+  "profile": {
+    "buyerMessagesPerDay": 20,
+    "replyRate": 0.75,
+    "duplicateRate": 0.15,
+    "outOfOrderRate": 0.03,
+    "qianfanFailRate": 0.05,
+    "wechatNotifyFailRate": 0.03,
+    "crashRate": 0.005,
+    "timeoutRate": 0.005,
+    "persistenceDelayRate": 0.005
+  }
+}
