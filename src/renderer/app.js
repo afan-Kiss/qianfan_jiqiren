@@ -11,6 +11,9 @@ const state = {
   starting: false,
   progressSteps: [],
   lastMessage: '',
+  runtimeHealth: null,
+  lastWatchdogFeedAt: null,
+  runtimeRunning: false,
 };
 
 const panel = {
@@ -78,6 +81,7 @@ const els = {
 
 let toastTimer = null;
 let statusPollTimer = null;
+let progressDisplayTimer = null;
 let unsubscribeRuntimeStatus = null;
 let unsubscribeRuntimeLog = null;
 let unsubscribeRuntimeStats = null;
@@ -85,6 +89,73 @@ let unsubscribeRelayLog = null;
 const activityDedupSeen = new Map();
 const ACTIVITY_DEDUP_MS = 3000;
 const ACTIVITY_MAX_ITEMS = 100;
+
+function formatAgeSec(ageMs) {
+  if (ageMs == null || !Number.isFinite(ageMs)) return '';
+  return `${Math.max(0, Math.floor(ageMs / 1000))} 秒前`;
+}
+
+function buildWorkerProgressLine(lastWatchdogFeedAt) {
+  if (!lastWatchdogFeedAt) {
+    return { text: '● worker 等待心跳', status: 'unknown' };
+  }
+  const ageMs = Date.now() - Number(lastWatchdogFeedAt);
+  if (ageMs <= 90000) {
+    return {
+      text: `● worker 正常 · 看门狗 ${formatAgeSec(ageMs)} ✓`,
+      status: 'done',
+      showCheck: true,
+    };
+  }
+  if (ageMs <= 150000) {
+    return {
+      text: `● worker 心跳延迟 · 上次看门狗 ${formatAgeSec(ageMs)}`,
+      status: 'warn',
+    };
+  }
+  return {
+    text: `● worker 心跳超时 · 上次看门狗 ${formatAgeSec(ageMs)} !`,
+    status: 'error',
+  };
+}
+
+function mergeProgressWithWorkerAge(progressLines, lastWatchdogFeedAt) {
+  const lines = Array.isArray(progressLines) ? progressLines : [];
+  const workerLine = buildWorkerProgressLine(lastWatchdogFeedAt);
+  return lines.map((line) => (
+    line.key === 'worker'
+      ? { ...line, text: workerLine.text, status: workerLine.status, showCheck: workerLine.showCheck === true }
+      : line
+  ));
+}
+
+function applyRuntimeHealth(health, runtimeStatus = {}) {
+  state.runtimeHealth = health || null;
+  state.lastWatchdogFeedAt = runtimeStatus.lastWatchdogFeedAt || health?.lastWatchdogFeedAt || null;
+  state.runtimeRunning = health?.relayRunning === true;
+  if (health?.progressLines?.length) {
+    state.progressSteps = mergeProgressWithWorkerAge(health.progressLines, state.lastWatchdogFeedAt);
+  }
+}
+
+function isRoutineHealthActivity(text = '') {
+  return /看门狗已喂食|看门狗已喂|watchdog feed|worker heartbeat|心跳正常|健康检查正常/i.test(String(text));
+}
+
+function startProgressDisplayTimer() {
+  stopProgressDisplayTimer();
+  progressDisplayTimer = setInterval(() => {
+    if (!state.runtimeRunning || !state.runtimeHealth?.progressLines?.length) return;
+    state.progressSteps = mergeProgressWithWorkerAge(state.runtimeHealth.progressLines, state.lastWatchdogFeedAt);
+    renderProgress();
+  }, 1000);
+}
+
+function stopProgressDisplayTimer() {
+  if (!progressDisplayTimer) return;
+  clearInterval(progressDisplayTimer);
+  progressDisplayTimer = null;
+}
 
 function formatActivityTime(ts) {
   const d = new Date(Number(ts) || Date.now());
@@ -147,10 +218,10 @@ function addActivity(text, meta = {}) {
 
 function addRuntimeActivity(entry) {
   if (!entry) return;
+  const text = String(entry.message || '').slice(0, 200);
+  if (!text || isRoutineHealthActivity(text)) return;
   const dedupKey = entry.dedupKey || buildActivityDedupKey(entry);
   if (!shouldShowActivity(dedupKey)) return;
-  const text = String(entry.message || '').slice(0, 200);
-  if (!text) return;
   state.activities.unshift({
     time: entry.displayTime || formatActivityTime(entry.time || Date.now()),
     text: text.slice(0, 120),
@@ -298,6 +369,7 @@ async function refreshBackendStatus() {
     }
 
     applyTodayStats(backendStatus.todayStats || backendStatus.runtime?.todayStats);
+    applyRuntimeHealth(backendStatus.health || backendStatus.runtime?.health, backendStatus.runtime);
     await refreshTodayStats();
     return backendStatus;
   } catch {
@@ -361,6 +433,29 @@ function renderMainStatus() {
     els.mainStatusDesc.textContent = '请稍等，正在帮你连接微信和千帆';
     els.heroCard.dataset.state = 'attention';
     els.heroHint.classList.add('hidden');
+    return;
+  }
+
+  if (state.relayStatus === 'needs_action') {
+    els.mainStatusTitle.textContent = '需要先设置通知人';
+    els.mainStatusDesc.textContent = '还没有设置通知人，请先选择一个微信好友接收通知。';
+    els.heroCard.dataset.state = 'attention';
+    els.heroHint.classList.remove('hidden');
+    els.heroHintText.textContent = '还没有设置通知人，请先选择一个微信好友接收通知。';
+    return;
+  }
+
+  const health = state.runtimeHealth;
+  if (health?.overall && (state.relayStatus === 'running' || state.relayStatus === 'attention' || state.runtimeRunning)) {
+    els.mainStatusTitle.textContent = health.overall.title;
+    els.mainStatusDesc.textContent = health.overall.subtitle;
+    els.heroCard.dataset.state = health.overall.heroState;
+    if (health.overall.level === 'error' && health.sections?.qianfan?.level === 'error') {
+      els.heroHint.classList.remove('hidden');
+      els.heroHintText.textContent = '千帆连接失败，请检查千帆安装路径，或手动运行「启动千帆调试模式.bat」';
+    } else {
+      els.heroHint.classList.add('hidden');
+    }
     return;
   }
 
@@ -429,7 +524,7 @@ function setProgressSteps(steps) {
 }
 
 function renderProgress() {
-  const show = state.starting || (state.relayStatus === 'running' && state.progressSteps.length > 0);
+  const show = state.starting || (state.runtimeRunning && state.progressSteps.length > 0);
   els.progressPanel.classList.toggle('hidden', !show);
   if (!show) {
     els.progressSteps.innerHTML = '';
@@ -439,10 +534,13 @@ function renderProgress() {
     const cls = [
       step.status === 'done' ? 'done' : '',
       step.status === 'active' ? 'active' : '',
+      step.status === 'warn' ? 'warn' : '',
+      step.status === 'unknown' ? 'unknown' : '',
       step.status === 'error' ? 'error' : '',
     ].filter(Boolean).join(' ');
     const check = step.showCheck ? '<span class="progress-check" aria-hidden="true">✓</span>' : '';
-    return `<li class="${cls}"><span class="progress-dot"></span><div class="progress-content"><span class="progress-text">${escapeHtml(step.text)}${check}</span></div></li>`;
+    const mark = step.status === 'error' ? '<span class="progress-check" aria-hidden="true">!</span>' : check;
+    return `<li class="${cls}"><span class="progress-dot"></span><div class="progress-content"><span class="progress-text">${escapeHtml(step.text)}${mark}</span></div></li>`;
   }).join('');
 }
 
@@ -722,9 +820,13 @@ async function handleStopRelay() {
   state.starting = false;
   const result = await window.qianfanApp.stopRelay();
   stopStatusPolling();
+  stopProgressDisplayTimer();
   state.relayStatus = 'stopped';
   state.wechatStatus = 'unchecked';
   state.qianfanStatus = 'unchecked';
+  state.runtimeHealth = null;
+  state.runtimeRunning = false;
+  state.lastWatchdogFeedAt = null;
   state.progressSteps = [];
   addActivity(result.ok ? '中转已停止' : '停止中转失败');
   renderAll();
@@ -737,23 +839,8 @@ function startStatusPolling() {
     const backendStatus = await refreshBackendStatus();
     const bot = backendStatus?.bot || {};
     if (bot.fullReady) {
-      setProgressSteps([
-        { text: '千帆已连接', status: 'done', showCheck: true },
-        { text: '微信已就绪', status: 'done', showCheck: true },
-        { text: '中转运行中', status: 'done', showCheck: true },
-      ]);
       stopStatusPolling();
-    } else if (bot.qianfanReady && !bot.wechatReady) {
-      setProgressSteps([
-        { text: '千帆已连接', status: 'done', showCheck: true },
-        { text: '正在启动微信…', status: 'active' },
-      ]);
-    } else if (!bot.qianfanReady) {
-      setProgressSteps([
-        { text: '正在启动千帆客服工作台…', status: 'active' },
-        { text: bot.qianfanError || '等待千帆店铺就绪…', status: 'pending' },
-        { text: '等待启动微信…', status: 'pending' },
-      ]);
+      startProgressDisplayTimer();
     }
     renderAll();
   }, 3000);
@@ -876,6 +963,9 @@ function setupRuntimeListeners() {
       const wechatReady = runtimeStatus.wechatReady === true;
       const fullReady = runtimeStatus.supervisorStatus === 'running' && qianfanReady && wechatReady;
 
+      applyRuntimeHealth(runtimeStatus.health, runtimeStatus);
+      if (state.runtimeRunning) startProgressDisplayTimer();
+
       if (fullReady) {
         state.relayStatus = 'running';
         state.qianfanStatus = 'ok';
@@ -885,6 +975,7 @@ function setupRuntimeListeners() {
       } else if (!running) {
         state.relayStatus = 'stopped';
         state.starting = false;
+        stopProgressDisplayTimer();
       } else {
         state.relayStatus = 'attention';
         const listener = (runtimeStatus.workers || []).find((w) => w.workerName === 'qianfan-listener') || {};

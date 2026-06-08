@@ -13,6 +13,7 @@ const { RuntimeSupervisor } = require('../runtime/supervisor');
 const { stopRuntimeChildProcesses } = require('../shared/runtime-process-cleanup');
 const { formatActivityLogEntry } = require('../shared/activity-log');
 const { formatLogTime } = require('../shared/user-activity-log');
+const { isRoutineHealthActivityMessage } = require('../shared/runtime-health');
 
 const ROOT = config.root;
 const CONFIG_FILE = path.join(ROOT, 'config.wxbot-new.json');
@@ -128,6 +129,7 @@ function bindSupervisorEvents(supervisor) {
   });
 
   supervisor.on('log', (entry) => {
+    if (isRoutineHealthActivityMessage(entry.message)) return;
     const formatted = formatActivityLogEntry(entry);
     if (!formatted.show) return;
     safePush('runtime:log', {
@@ -143,8 +145,21 @@ function bindSupervisorEvents(supervisor) {
   });
 }
 
+function syncSupervisorNotifyCount() {
+  applyNotifyStateToConfig(config, buildNotifyState());
+  const count = (config.notifyAccounts || []).filter((item) => item && String(item.wxid || '').trim()).length;
+  getSupervisor().setNotifyAccountCount(count);
+  return count;
+}
+
+function getRuntimeStatus() {
+  syncSupervisorNotifyCount();
+  return getSupervisor().getStatus();
+}
+
 function mapRuntimeToLegacyStatus(runtimeStatus) {
   const workers = runtimeStatus?.workers || [];
+  const health = runtimeStatus?.health || null;
   const byName = Object.fromEntries(workers.map((w) => [w.name || w.workerName, w]));
   const listener = byName['qianfan-listener'] || {};
   const callback = byName['wechat-callback'] || {};
@@ -166,6 +181,7 @@ function mapRuntimeToLegacyStatus(runtimeStatus) {
       degraded: runtimeStatus.supervisorStatus === 'degraded' || (running && !qianfanReady),
       qianfanPhase: listener.phase || listener.qianfanRuntime?.phase || '',
       qianfanError: listener.lastError || listener.qianfanRuntime?.lastError || '',
+      relayRunning: health?.relayRunning === true || running,
     },
     modules: {
       'wechat-runtime': {
@@ -182,6 +198,7 @@ function mapRuntimeToLegacyStatus(runtimeStatus) {
       },
     },
     runtime: runtimeStatus,
+    health,
     todayStats: dataStore.getTodayStats(),
   };
 }
@@ -422,7 +439,7 @@ async function checkQianfanDevTools() {
 }
 
 function isRuntimeRunning() {
-  const status = getSupervisor().getStatus();
+  const status = getRuntimeStatus();
   return ['starting', 'running', 'degraded'].includes(status.supervisorStatus);
 }
 
@@ -458,7 +475,7 @@ function registerIpcHandlers(app) {
     return { ok: true, result };
   });
 
-  ipcMain.handle('runtime:status', async () => getSupervisor().getStatus());
+  ipcMain.handle('runtime:status', async () => getRuntimeStatus());
 
   ipcMain.handle('app:get-notify-accounts', async () => readNotifyAccountsFromConfig());
   ipcMain.handle('app:set-notify-accounts', async (_event, accounts) => {
@@ -540,7 +557,7 @@ function registerIpcHandlers(app) {
   });
 
   ipcMain.handle('app:get-relay-state', async () => {
-    const runtimeStatus = getSupervisor().getStatus();
+    const runtimeStatus = getRuntimeStatus();
     const running = isRuntimeRunning();
     const fullReady = runtimeStatus.supervisorStatus === 'running'
       && runtimeStatus.qianfanReady
@@ -556,7 +573,7 @@ function registerIpcHandlers(app) {
     };
   });
 
-  ipcMain.handle('app:get-status', async () => mapRuntimeToLegacyStatus(getSupervisor().getStatus()));
+  ipcMain.handle('app:get-status', async () => mapRuntimeToLegacyStatus(getRuntimeStatus()));
 
   ipcMain.handle('app:check-environment', async () => {
     const issues = [];
@@ -592,7 +609,7 @@ function registerIpcHandlers(app) {
     };
   });
 
-  ipcMain.handle('app:get-relay-logs', async () => getSupervisor().getStatus().recentLogs.slice(-80));
+  ipcMain.handle('app:get-relay-logs', async () => getRuntimeStatus().recentLogs.slice(-80));
 
   ipcMain.handle('app:get-today-stats', async () => dataStore.getTodayStats());
 }

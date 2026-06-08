@@ -24,6 +24,7 @@
     "check:qianfan-runtime": "node scripts/check-qianfan-runtime-controller.js",
     "check:start-idempotent": "node scripts/check-runtime-start-idempotent.js",
     "check:ui-log-dedup": "node scripts/check-ui-log-dedup.js",
+    "check:homepage-health": "node scripts/check-homepage-health-status.js",
     "check:qianfan-status": "node scripts/check-qianfan-status-snapshot.js",
     "check:failure-owner": "node scripts/check-failure-receipt-owner.js",
     "check:longrun-stable-invariants": "node scripts/check-longrun-stable-invariants.js",

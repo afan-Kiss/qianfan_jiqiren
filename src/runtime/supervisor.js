@@ -14,6 +14,10 @@ const {
   buildUserHeartbeatSummary,
   buildWorkerModulesSummary,
 } = require('../shared/user-activity-log');
+const {
+  computeRuntimeHealth,
+  buildHealthTransitionLogs,
+} = require('../shared/runtime-health');
 
 // 看门狗健康摘要：每 4 小时向 UI 播报一次（异常/重启仍即时记录）
 const HEARTBEAT_SUMMARY_MS = 4 * 60 * 60 * 1000;
@@ -44,6 +48,8 @@ class RuntimeSupervisor extends EventEmitter {
     this.wechatBootCompleted = false;
     this.wechatBootInProgress = false;
     this.workerStatusSnapshot = new Map();
+    this.healthStatusSnapshot = null;
+    this.notifyAccountCount = 0;
     this.heartbeatSummaryTimer = null;
     this.lastWatchdogFeedAt = 0;
 
@@ -92,19 +98,27 @@ class RuntimeSupervisor extends EventEmitter {
 
   startHeartbeatSummaryTimer() {
     this.clearHeartbeatSummaryTimer();
+    // 看门狗继续内部喂狗；不向「最近动态」写入周期性日志。
     this.heartbeatSummaryTimer = setInterval(() => {
       if (this.disposed || this.state.supervisorStatus === 'stopped') return;
-      const status = this.getStatus();
-      if (!['running', 'starting', 'degraded'].includes(status.supervisorStatus)) return;
-      const summary = buildUserHeartbeatSummary(status);
-      if (!summary) return;
-      this.userLog(`看门狗已喂食：${summary}`, {
-        dedupKey: `watchdog-feed:${Math.floor(Date.now() / HEARTBEAT_SUMMARY_MS)}`,
-      });
+      if (!['running', 'starting', 'degraded'].includes(this.state.supervisorStatus)) return;
+      this.emitStatus();
     }, HEARTBEAT_SUMMARY_MS);
     if (typeof this.heartbeatSummaryTimer.unref === 'function') {
       this.heartbeatSummaryTimer.unref();
     }
+  }
+
+  maybeLogHealthTransitions(nextHealth) {
+    if (!nextHealth) return;
+    const logs = buildHealthTransitionLogs(this.healthStatusSnapshot, nextHealth);
+    for (const entry of logs) {
+      this.userLog(entry.message, {
+        dedupKey: entry.dedupKey,
+        level: entry.level || 'info',
+      });
+    }
+    this.healthStatusSnapshot = nextHealth;
   }
 
   noteWatchdogFeed(workerName) {
@@ -200,7 +214,13 @@ class RuntimeSupervisor extends EventEmitter {
 
     runner.on('message', (message) => this.handleWorkerMessage(workerName, message));
     runner.on('exit', ({ crashed }) => {
-      if (crashed) this.scheduleWorkerRestart(workerName, 'crashed');
+      if (!crashed) return;
+      const label = WORKER_LABELS[workerName] || workerName;
+      this.userLog(`worker 已退出或异常停止：${label}`, {
+        dedupKey: `worker-exit:${workerName}`,
+        level: 'error',
+      });
+      this.scheduleWorkerRestart(workerName, 'crashed');
     });
     runner.on('stdout', (text) => this.fileLog('info', text, { workerName }));
     runner.on('stderr', (text) => this.fileLog('error', text, { workerName }));
@@ -686,13 +706,6 @@ class RuntimeSupervisor extends EventEmitter {
       dedupKey: `supervisor-started:${anyFailed ? 'degraded' : 'ok'}`,
     });
     this.startHeartbeatSummaryTimer();
-    const status = this.getStatus();
-    const heartbeatSummary = buildUserHeartbeatSummary(status);
-    if (heartbeatSummary) {
-      this.userLog(`看门狗已喂食：${heartbeatSummary}`, {
-        dedupKey: `watchdog-feed:boot:${Math.floor(Date.now() / HEARTBEAT_SUMMARY_MS)}`,
-      });
-    }
     this.emitStatus();
     return this.getStatus();
   }
@@ -702,6 +715,7 @@ class RuntimeSupervisor extends EventEmitter {
     this.clearHeartbeatSummaryTimer();
     this.wechatBootCompleted = false;
     this.wechatBootInProgress = false;
+    this.healthStatusSnapshot = null;
     this.state.setSupervisorStatus('stopping');
     this.emitStatus();
 
@@ -738,6 +752,7 @@ class RuntimeSupervisor extends EventEmitter {
     const anyStarting = workers.some((w) => w.status === 'starting' || w.status === 'restarting');
     const qianfanReady = listener.qianfanReady === true && listener.listenerReady === true;
     const wechatReady = callback.status === 'running' || callback.businessReady === true;
+    const listenerReadyFlag = listener.listenerReady === true;
 
     let supervisorStatus = this.state.supervisorStatus;
     if (supervisorStatus === 'running' && anyFailed) supervisorStatus = 'degraded';
@@ -758,14 +773,38 @@ class RuntimeSupervisor extends EventEmitter {
       qianfanReady,
       listenerReady: listener.listenerReady === true,
       wechatReady,
+      relayRunning: ['starting', 'running', 'degraded'].includes(supervisorStatus),
+      workerAlive: workers.some((worker) => worker.workerAlive !== false && worker.status !== 'stopped'),
+      lastWorkerHeartbeatAt: workers.reduce((max, worker) => {
+        const ts = Number(worker.lastHeartbeatAt || 0);
+        return ts > max ? ts : max;
+      }, 0) || null,
+      lastWatchdogFeedAt: this.lastWatchdogFeedAt || null,
+      lastStatusAt: Date.now(),
       todayStats: dataStore.getTodayStats(),
       recentLogs: this.state.getSnapshot().recentLogs.slice(-200),
       topicRoutes: TOPIC_ROUTES,
+      health: computeRuntimeHealth({
+        supervisorStatus,
+        workers,
+      qianfanReady,
+      listenerReady: listenerReadyFlag,
+      wechatReady,
+      lastWatchdogFeedAt: this.lastWatchdogFeedAt || null,
+      }, {
+        notifyAccountCount: this.notifyAccountCount || 0,
+      }),
     };
+  }
+
+  setNotifyAccountCount(count = 0) {
+    this.notifyAccountCount = Math.max(0, Number(count) || 0);
+    return this;
   }
 
   emitStatus() {
     const status = this.getStatus();
+    this.maybeLogHealthTransitions(status.health);
     this.emit('status', status);
     return status;
   }

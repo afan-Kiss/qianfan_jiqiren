@@ -18,6 +18,10 @@ function formatActivityLogEntry(entry = {}) {
     return { show: false, text: '', dedupKey: '', time: entry.time || Date.now() };
   }
 
+  if (/看门狗已喂食|看门狗已喂|watchdog feed|worker heartbeat|心跳正常|健康检查正常/i.test(text)) {
+    return { show: false, text: '', dedupKey: '', time: entry.time || Date.now() };
+  }
+
   const dedupKey = String(entry.dedupKey || text).trim().slice(0, 160);
   return {
     show: true,
