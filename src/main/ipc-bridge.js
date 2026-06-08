@@ -34,33 +34,61 @@ function getPaths() {
 }
 
 async function preflightLaunchQianfanViaCmd() {
-  const { createQianfanRuntimeController } = require('../adapters/qianfan-runtime-controller');
-  const qianfanController = createQianfanRuntimeController({
-    config: { ...config.qianfanDebug, root: config.root },
-    log: (level, message) => {
-      safePush('runtime:log', {
-        level,
-        message,
-        workerName: 'qianfan-listener',
-        time: Date.now(),
-      });
-    },
-    onPhase: (nextPhase) => {
-      const phaseMessage = {
-        checking: '正在检查千帆环境…',
-        launching: '正在以调试模式启动千帆客服工作台…',
-        waiting_shops: '千帆已启动，正在等待店铺页面加载…',
-      }[nextPhase] || '';
-      if (!phaseMessage) return;
-      safePush('runtime:log', {
-        level: 'info',
-        message: phaseMessage,
-        workerName: 'qianfan-listener',
-        time: Date.now(),
-      });
-    },
+  const { ensureQianfanDevToolsReady, resolveClientConfig } = require('../qianfan-client-launcher');
+
+  const cfg = resolveClientConfig({ ...config.qianfanDebug, root: config.root });
+  const pushLog = (level, message) => {
+    safePush('runtime:log', {
+      level,
+      message,
+      workerName: 'qianfan-listener',
+      time: Date.now(),
+    });
+  };
+
+  const result = await ensureQianfanDevToolsReady(cfg, {
+    canLaunch: true,
+    log: (level, message) => pushLog(level, message),
   });
-  return qianfanController.ensureQianfanReady();
+
+  if (!result.ok) {
+    return { ok: false, lastError: result.lastError || '千帆未能自动启动' };
+  }
+
+  return { ok: true, ...result };
+}
+
+async function startRuntimeWithQianfanPreflight() {
+  if (!fs.existsSync(config.wxbotExe)) {
+    return { ok: false, status: 'failed', message: `未找到 wxbot.exe：${config.wxbotExe}` };
+  }
+
+  const supervisor = getSupervisor();
+  const before = supervisor.getStatus();
+  if (['starting', 'running', 'degraded'].includes(before.supervisorStatus)) {
+    return {
+      ok: true,
+      status: before.supervisorStatus,
+      message: 'runtime supervisor 已在运行',
+      runtime: before,
+      alreadyRunning: true,
+    };
+  }
+
+  const qianfanResult = await preflightLaunchQianfanViaCmd();
+  if (!qianfanResult.ok) {
+    const message = qianfanResult.lastError || '千帆未能自动启动，请检查安装路径';
+    return { ok: false, status: 'failed', message, qianfanResult };
+  }
+
+  const status = await supervisor.startAll();
+  return {
+    ok: true,
+    status: 'starting',
+    message: '千帆已启动，正在等待就绪后启动微信…',
+    runtime: status,
+    qianfanResult,
+  };
 }
 
 function getSupervisor() {
@@ -418,18 +446,7 @@ function registerIpcHandlers(app) {
     return paths.logsDir;
   });
 
-  ipcMain.handle('runtime:start', async () => {
-    if (!fs.existsSync(config.wxbotExe)) {
-      return { ok: false, message: `未找到 wxbot.exe：${config.wxbotExe}` };
-    }
-    const supervisor = getSupervisor();
-    const before = supervisor.getStatus();
-    if (['starting', 'running', 'degraded'].includes(before.supervisorStatus)) {
-      return { ok: true, status: before, alreadyRunning: true };
-    }
-    const status = await supervisor.startAll();
-    return { ok: true, status };
-  });
+  ipcMain.handle('runtime:start', async () => startRuntimeWithQianfanPreflight());
 
   ipcMain.handle('runtime:stop', async (_event, reason) => {
     const status = await getSupervisor().stopAll(reason || 'manual');
@@ -508,63 +525,14 @@ function registerIpcHandlers(app) {
     steps: [],
   }));
 
-  ipcMain.handle('app:start-relay', async () => {
-    if (!fs.existsSync(config.wxbotExe)) {
-      return { ok: false, status: 'failed', message: `未找到 wxbot.exe：${config.wxbotExe}` };
-    }
-    const supervisor = getSupervisor();
-    const before = supervisor.getStatus();
-    if (['starting', 'running', 'degraded'].includes(before.supervisorStatus)) {
-      return { ok: true, status: before.supervisorStatus, message: 'runtime supervisor 已在运行', runtime: before, alreadyRunning: true };
-    }
-
-    try {
-      const qianfanResult = await preflightLaunchQianfanViaCmd();
-      if (!qianfanResult.ok) {
-        const message = qianfanResult.lastError || '千帆未能自动启动，请检查安装路径';
-        return { ok: false, status: 'failed', message, qianfanResult };
-      }
-    } catch (err) {
-      return { ok: false, status: 'failed', message: err?.message || '千帆启动失败' };
-    }
-
-    const status = await supervisor.startAll();
-    return {
-      ok: true,
-      status: 'starting',
-      message: '千帆已启动，正在等待就绪后启动微信…',
-      runtime: status,
-    };
-  });
+  ipcMain.handle('app:start-relay', async () => startRuntimeWithQianfanPreflight());
 
   ipcMain.handle('app:stop-relay', async () => {
     const status = await getSupervisor().stopAll('manual');
     return { ok: true, status, stopped: true };
   });
 
-  ipcMain.handle('app:start-bot', async () => {
-    if (!fs.existsSync(config.wxbotExe)) {
-      return { ok: false, status: 'failed', message: `未找到 wxbot.exe：${config.wxbotExe}` };
-    }
-    const supervisor = getSupervisor();
-    const before = supervisor.getStatus();
-    if (['starting', 'running', 'degraded'].includes(before.supervisorStatus)) {
-      return { ok: true, status: before.supervisorStatus, runtime: before, alreadyRunning: true };
-    }
-
-    try {
-      const { createQianfanRuntimeController } = require('../adapters/qianfan-runtime-controller');
-      const qianfanController = createQianfanRuntimeController({
-        config: { ...config.qianfanDebug, root: config.root },
-      });
-      await qianfanController.ensureQianfanReady();
-    } catch {
-      // ignore preflight errors; worker will retry
-    }
-
-    const status = await supervisor.startAll();
-    return { ok: true, status: 'starting', runtime: status };
-  });
+  ipcMain.handle('app:start-bot', async () => startRuntimeWithQianfanPreflight());
 
   ipcMain.handle('app:stop-bot', async () => {
     const status = await getSupervisor().stopAll('manual');

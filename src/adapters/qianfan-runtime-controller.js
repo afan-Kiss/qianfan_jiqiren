@@ -1,15 +1,13 @@
 const fs = require('fs');
 const { getPageTargets } = require('../devtools-list');
-const { detectQianfanShopPages, validateQianfanDevToolsProbe } = require('../page-finder');
+const { detectQianfanShopPages } = require('../page-finder');
 const {
   probeDevTools,
   resolveClientConfig,
-  killExistingQianfanClient,
   isQianfanProcessRunning,
   isDistributedWorkerProcess,
-  closeQianfanClientIfRunning,
+  ensureQianfanDevToolsReady,
   launchQianfanClientAndVerify,
-  waitForProcessExit,
 } = require('../qianfan-client-launcher');
 
 const DEFAULT_CLIENT_EXE = 'E:\\千帆\\eva\\千帆客服工作台.exe';
@@ -64,12 +62,7 @@ function resolveConfig(cfg = {}) {
       ? cfg.qianfanClientArgs.map((arg) =>
           String(arg).replace(/9223/g, String(port)).replace(/127\.0\.0\.1/g, host),
         )
-      : [
-          `--remote-debugging-port=${port}`,
-          `--remote-debugging-address=${host}`,
-          '--remote-allow-origins=*',
-          '--disable-features=BlockInsecurePrivateNetworkRequests',
-        ],
+      : [`--remote-debugging-port=${port}`],
   };
 }
 
@@ -183,28 +176,9 @@ function createQianfanRuntimeController(options = {}) {
 
     const waitResult = await waitForDevToolsProbe(clientConfig, clientConfig.waitTimeoutMs);
     if (!waitResult.ok) {
-      if (waitResult.reason === 'timeout' && isQianfanProcessRunning(config.qianfanClientProcessName)) {
-        logFn('warn', '[千帆] 千帆已打开但未检测到调试端口，正在重启为调试模式…');
-        killExistingQianfanClient(config.qianfanClientProcessName);
-        await waitForProcessExit(config.qianfanClientProcessName, config.closeWaitMs || 8000);
-        const relaunched = await launchClientFn(clientConfig, logFn);
-        if (relaunched.ok) {
-          ownedPid = relaunched.pid || ownedPid;
-          const retryWait = await waitForDevToolsProbe(clientConfig, clientConfig.waitTimeoutMs);
-          if (retryWait.ok) {
-            setPhase('ready');
-            lastReadyAt = Date.now();
-            lastError = '';
-            logFn('info', `[千帆] DevTools ${config.devtoolsPort} 已就绪`);
-            return { ok: true, phase: 'ready', ownedPid, list: retryWait.list };
-          }
-        }
-      }
       phase = 'failed';
       lastError = waitResult.reason === 'timeout'
-        ? (isQianfanProcessRunning(config.qianfanClientProcessName)
-          ? `千帆已打开，但调试端口 ${config.devtoolsPort} 未生效，请关闭千帆后重试`
-          : `千帆 DevTools ${config.devtoolsPort} 等待超时，请检查千帆安装路径`)
+        ? `千帆 DevTools ${config.devtoolsPort} 等待超时，请检查千帆安装路径`
         : waitResult.reason || 'port_unavailable';
       logFn('error', `[千帆] ${lastError}`);
       return { ok: false, phase: 'failed', lastError };
@@ -323,10 +297,8 @@ function createQianfanRuntimeController(options = {}) {
       const clientConfig = toClientConfig();
       const exeExists = existsFn(config.qianfanClientExePath);
       const firstProbe = await probeDevTools(clientConfig);
-      const debugAttached = firstProbe.ok
-        && validateQianfanDevToolsProbe(firstProbe, { expectedShopCount: config.expectedShopCount }).valid;
 
-      if (debugAttached) {
+      if (firstProbe.ok) {
         setPhase('attached');
         lastReadyAt = Date.now();
         lastError = '';
@@ -342,38 +314,23 @@ function createQianfanRuntimeController(options = {}) {
             logFn('warn', `[千帆] ${lastError}`);
           }
         }
-        setPhase('attached');
         return {
           ok: true,
-          phase: 'attached',
           alreadyRunning: true,
           attachResult,
           ...getStatus(),
+          phase: 'attached',
         };
       }
 
-      if (firstProbe.ok) {
-        const port = config.devtoolsPort;
-        if (isQianfanProcessRunning(config.qianfanClientProcessName)) {
-          logFn('warn', `[千帆] 调试端口 ${port} 已开，但未检测到千帆页面，正在以调试模式重启…`);
-          killExistingQianfanClient(config.qianfanClientProcessName);
-          await waitForProcessExit(config.qianfanClientProcessName, config.closeWaitMs || 8000);
-        } else {
-          phase = 'failed';
-          lastError = `${port} 端口已被其他程序占用（未检测到千帆页面），请关闭 Chrome/Edge 或修改 config.wxbot-new.json 里的 devtoolsPort`;
-          logFn('error', `[千帆] ${lastError}`);
-          return { ok: false, phase: 'failed', lastError, occupied: true, ...getStatus() };
-        }
-      } else if (firstProbe.occupied) {
+      if (firstProbe.occupied) {
         phase = 'failed';
         lastError = `${config.devtoolsPort} 端口被其他程序占用`;
         logFn('error', `[千帆] ${lastError}`);
         return { ok: false, phase: 'failed', lastError, occupied: true, ...getStatus() };
-      } else {
-        await closeQianfanClientIfRunning(config, (level, message) => logFn(level, message));
       }
 
-      if (!firstProbe.ok && !exeExists && firstProbe.reason === 'unreachable') {
+      if (!exeExists) {
         phase = 'failed';
         lastError = `未找到千帆客服工作台：${config.qianfanClientExePath}`;
         logFn('error', lastError);
@@ -386,58 +343,40 @@ function createQianfanRuntimeController(options = {}) {
         && ensureOptions.attachOnly !== true
         && config.autoLaunchQianfanClientWhenMissing
         && !launchBlockedInWorker;
-      if (!autoLaunch) {
-        const waitMs = Math.min(config.waitTimeoutMs || 60000, 30000);
-        const waited = await waitForDevToolsProbe(clientConfig, waitMs);
-        if (waited.ok) {
-          setPhase('attached');
-          lastReadyAt = Date.now();
-          lastError = '';
-          const cdp = probeResultToCdp(waited);
-          let attachResult = buildShopAttachResult(cdp);
-          if (!attachResult.canStartListener) {
-            const shopWait = await waitForShopPages(clientConfig, waited);
-            if (shopWait.attachResult) attachResult = shopWait.attachResult;
-          }
-          return {
-            ok: true,
-            phase: 'attached',
-            alreadyRunning: true,
-            attachResult,
-            ...getStatus(),
-          };
-        }
-        phase = launchBlockedInWorker ? 'waiting_launch' : 'degraded';
-        lastError = launchBlockedInWorker
-          ? '正在等待主进程启动千帆客服工作台…'
-          : buildQianfanAttachHint(clientConfig, firstProbe);
-        logFn('warn', `[千帆] ${lastError}`);
+
+      const devtoolsResult = await ensureQianfanDevToolsReady(clientConfig, {
+        canLaunch: autoLaunch,
+        attachWaitMs: !autoLaunch
+          ? (launchBlockedInWorker
+            ? Math.min(config.waitTimeoutMs || 60000, 30000)
+            : Math.min(config.waitTimeoutMs || 60000, 3000))
+          : undefined,
+        launchFn: async (cfg) => {
+          const result = await launchClientFn(cfg, logFn);
+          return { ok: result.ok, error: result.error, pid: result.pid };
+        },
+        log: (level, message) => logFn(level, message),
+      });
+
+      if (!devtoolsResult.ok) {
+        phase = devtoolsResult.reason === 'waiting_launch' ? 'waiting_launch' : 'failed';
+        lastError = devtoolsResult.lastError || buildQianfanAttachHint(clientConfig, firstProbe);
+        logFn(devtoolsResult.reason === 'waiting_launch' ? 'warn' : 'error', `[千帆] ${lastError}`);
         return { ok: false, phase, lastError, ...getStatus() };
       }
 
-      if (!exeExists) {
-        phase = 'failed';
-        lastError = `未找到千帆客服工作台：${config.qianfanClientExePath}`;
-        logFn('error', lastError);
-        return { ok: false, phase: 'failed', lastError, ...getStatus() };
-      }
-
-      const launched = await launchQianfanDebug();
-      if (!launched.ok) {
-        lastError = launched.lastError || lastError;
-        return { ok: false, phase: launched.phase || 'failed', lastError, ...getStatus() };
-      }
-
-      const cdp = probeResultToCdp({ list: launched.list || [] });
-      if (!launched.list) {
+      ownedPid = devtoolsResult.pid || ownedPid;
+      const readyProbe = devtoolsResult.probe || await probeDevTools(clientConfig);
+      if (!readyProbe.ok) {
         phase = 'failed';
         lastError = '千帆 CDP 不可用';
         return { ok: false, phase: 'failed', lastError, ...getStatus() };
       }
 
+      const cdp = probeResultToCdp(readyProbe);
       let attachResult = buildShopAttachResult(cdp);
       if (!attachResult.canStartListener) {
-        const shopWait = await waitForShopPages(clientConfig);
+        const shopWait = await waitForShopPages(clientConfig, readyProbe);
         if (shopWait.attachResult) attachResult = shopWait.attachResult;
         if (!shopWait.ok && shopWait.reason && shopWait.reason !== 'shops_not_ready') {
           lastError = '千帆店铺工作台页面等待超时，请确认千帆已登录并完成店铺加载';
@@ -447,7 +386,8 @@ function createQianfanRuntimeController(options = {}) {
 
       setPhase('ready');
       lastReadyAt = Date.now();
-      return { ok: true, phase: 'ready', attachResult, ...getStatus() };
+      lastError = '';
+      return { ok: true, attachResult, ...getStatus(), phase: 'ready' };
     })();
 
     try {

@@ -38,10 +38,10 @@ contextBridge.exposeInMainWorld('qianfanApp', {
     ipcRenderer.on('runtime:stats-update', handler);
     return () => ipcRenderer.removeListener('runtime:stats-update', handler);
   },
-  startRelay: () => ipcRenderer.invoke('runtime:start'),
-  stopRelay: () => ipcRenderer.invoke('runtime:stop'),
-  startBot: () => ipcRenderer.invoke('runtime:start'),
-  stopBot: () => ipcRenderer.invoke('runtime:stop'),
+  startRelay: () => ipcRenderer.invoke('app:start-relay'),
+  stopRelay: () => ipcRenderer.invoke('app:stop-relay'),
+  startBot: () => ipcRenderer.invoke('app:start-bot'),
+  stopBot: () => ipcRenderer.invoke('app:stop-bot'),
   getRelayState: () => ipcRenderer.invoke('app:get-relay-state'),
   getStatus: () => ipcRenderer.invoke('app:get-status'),
   getTodayStats: () => ipcRenderer.invoke('app:get-today-stats'),
