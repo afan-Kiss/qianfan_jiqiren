@@ -124,6 +124,12 @@ function canLaunchQianfanGuiLocally() {
   return typeof process.send !== 'function';
 }
 
+function buildLaunchCommandLine(config) {
+  const exe = config.qianfanClientExePath;
+  const argText = config.qianfanClientArgs.join(' ');
+  return `"${exe}" ${argText}`;
+}
+
 function buildCmdStartInner(config) {
   const exe = config.qianfanClientExePath;
   const argText = config.qianfanClientArgs.join(' ');
@@ -134,6 +140,113 @@ function buildCmdStartCommand(config) {
   return `cmd.exe /d /s /c ${buildCmdStartInner(config)}`;
 }
 
+function createLaunchLogger(logFn) {
+  return (level, message) => {
+    if (typeof logFn !== 'function') return;
+    if (logFn.length >= 2) logFn(level, message);
+    else logFn(message);
+  };
+}
+
+function spawnQianfanClientDirect(config) {
+  const args = [...config.qianfanClientArgs];
+  const child = spawn(config.qianfanClientExePath, args, {
+    cwd: config.qianfanClientWorkingDir,
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+    shell: false,
+  });
+  child.unref();
+  return { child, method: 'direct-spawn' };
+}
+
+function spawnQianfanClientShellFallback(config) {
+  const command = buildLaunchCommandLine(config);
+  const child = spawn(command, {
+    cwd: config.qianfanClientWorkingDir,
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+    shell: true,
+  });
+  child.unref();
+  return { child, method: 'shell-fallback' };
+}
+
+async function launchQianfanClient(rawConfig, logFn = println) {
+  const config = resolveClientConfig(rawConfig);
+  const log = createLaunchLogger(logFn);
+
+  if (!fs.existsSync(config.qianfanClientExePath)) {
+    return { ok: false, error: `未找到千帆客服工作台：${config.qianfanClientExePath}` };
+  }
+  if (!canLaunchQianfanGuiLocally()) {
+    return { ok: false, error: '当前进程无法启动千帆 GUI，请由主进程启动' };
+  }
+
+  log('info', `[千帆] 准备直接启动 exe：${config.qianfanClientExePath}`);
+  log('info', `[千帆] 启动参数：${config.qianfanClientArgs.join(' ')}`);
+
+  let child;
+  let method = 'direct-spawn';
+  try {
+    ({ child, method } = spawnQianfanClientDirect(config));
+  } catch (err) {
+    log('warn', `[千帆] 直接 spawn 失败，尝试 shell 回退：${err.message || err}`);
+    try {
+      ({ child, method } = spawnQianfanClientShellFallback(config));
+    } catch (fallbackErr) {
+      return { ok: false, error: fallbackErr.message || String(fallbackErr) };
+    }
+  }
+
+  log('info', `[千帆] spawn pid=${child.pid || 'unknown'}`);
+
+  await sleep(1500);
+
+  const processRunning = isQianfanProcessRunning(config.qianfanClientProcessName);
+  log('info', `[千帆] tasklist 检测千帆进程：${processRunning ? '存在' : '不存在'}`);
+
+  if (!processRunning) {
+    return {
+      ok: false,
+      error: '已执行启动命令，但未检测到 千帆客服工作台.exe 进程',
+      method,
+      pid: child.pid || null,
+    };
+  }
+
+  const waitResult = await waitForDevTools(config);
+  log('info', `[千帆] DevTools ${config.devtoolsPort} 检测：${waitResult.ok ? '成功' : '失败'}`);
+
+  if (!waitResult.ok) {
+    const error = waitResult.reason === 'port_occupied'
+      ? `${config.devtoolsPort} 端口被其他程序占用`
+      : `千帆进程已启动，但 DevTools ${config.devtoolsPort} 等待超时`;
+    return {
+      ok: false,
+      error,
+      method,
+      pid: child.pid || null,
+      processStarted: true,
+    };
+  }
+
+  return {
+    ok: true,
+    method,
+    cmdLine: buildLaunchCommandLine(config),
+    pid: child.pid || null,
+    processStarted: true,
+    devtoolsReady: true,
+    probe: waitResult.probe,
+    pageCount: waitResult.pageCount,
+    list: waitResult.list,
+  };
+}
+
+/** @deprecated 仅保留给 bat 生成；主启动请使用 launchQianfanClient */
 function launchQianfanClientViaCmdStart(config) {
   const inner = buildCmdStartInner(config);
   const child = spawn('cmd.exe', ['/d', '/s', '/c', inner], {
@@ -149,21 +262,6 @@ function launchQianfanClientViaCmdStart(config) {
     cmdLine: buildCmdStartCommand(config),
     pid: child.pid || null,
   };
-}
-
-function launchQianfanClient(rawConfig) {
-  const config = resolveClientConfig(rawConfig);
-  if (!fs.existsSync(config.qianfanClientExePath)) {
-    return { ok: false, error: `未找到千帆客服工作台：${config.qianfanClientExePath}` };
-  }
-  if (!canLaunchQianfanGuiLocally()) {
-    return { ok: false, error: '当前进程无法启动千帆 GUI，请由主进程启动' };
-  }
-  try {
-    return launchQianfanClientViaCmdStart(config);
-  } catch (err) {
-    return { ok: false, error: err.message || String(err) };
-  }
 }
 
 async function waitForDevTools(config) {
@@ -216,31 +314,15 @@ async function waitForLaunchSignal(config, timeoutMs = 20000) {
 }
 
 async function launchQianfanClientAndVerify(rawConfig, logFn = println) {
-  const config = resolveClientConfig(rawConfig);
-  const log = (level, message) => {
-    if (typeof logFn !== 'function') return;
-    if (logFn.length >= 2) logFn(level, message);
-    else logFn(message);
-  };
-
-  const launched = launchQianfanClient(rawConfig);
+  const launched = await launchQianfanClient(rawConfig, logFn);
   if (!launched.ok) {
     return launched;
   }
 
-  log('info', `[千帆] 已执行：${launched.cmdLine || buildCmdStartCommand(config)}`);
-  const signal = await waitForLaunchSignal(config, config.waitTimeoutMs || 60000);
-  if (signal.ok) {
-    return {
-      ...launched,
-      processStarted: true,
-      devtoolsReady: signal.via === 'devtools',
-    };
-  }
-
   return {
-    ok: false,
-    error: `千帆 DevTools ${config.devtoolsPort} 等待超时，请手动运行：${buildCmdStartCommand(config)}`,
+    ...launched,
+    processStarted: true,
+    devtoolsReady: launched.devtoolsReady === true,
   };
 }
 
@@ -324,8 +406,7 @@ async function ensureQianfanDevToolsReady(cfg, options = {}) {
     await waitForProcessExit(config.qianfanClientProcessName, config.closeWaitMs || 8000);
   }
 
-  const doLaunch = options.launchFn || launchQianfanClient;
-  log('info', `[千帆] 正在执行 cmd 启动：${buildCmdStartCommand(config)}`);
+  const doLaunch = options.launchFn || ((cfg) => launchQianfanClient(cfg, log));
   const launched = await Promise.resolve(doLaunch(config));
   if (!launched.ok) {
     return {
@@ -335,12 +416,29 @@ async function ensureQianfanDevToolsReady(cfg, options = {}) {
     };
   }
 
+  if (launched.probe && launched.devtoolsReady) {
+    log('info', `[千帆] DevTools ${config.devtoolsPort} 已就绪`);
+    return {
+      ok: true,
+      phase: 'ready',
+      devtoolsAccessible: true,
+      launched: true,
+      pid: launched.pid || null,
+      probe: launched.probe,
+      pageCount: launched.pageCount,
+      list: launched.list,
+    };
+  }
+
   const waitResult = await waitForDevTools(config);
   if (!waitResult.ok) {
+    const lastError = launched.processStarted
+      ? `千帆进程已启动，但 DevTools ${config.devtoolsPort} 等待超时`
+      : `千帆 DevTools ${config.devtoolsPort} 等待超时，请手动运行：${buildLaunchCommandLine(config)}`;
     return {
       ok: false,
       reason: waitResult.reason || 'timeout',
-      lastError: `千帆 DevTools ${config.devtoolsPort} 等待超时，请手动运行：${buildCmdStartCommand(config)}`,
+      lastError,
     };
   }
 
@@ -422,6 +520,7 @@ module.exports = {
   launchQianfanClient,
   launchQianfanClientViaCmdStart,
   launchQianfanClientAndVerify,
+  buildLaunchCommandLine,
   buildCmdStartInner,
   buildCmdStartCommand,
   buildLaunchBatContent,
