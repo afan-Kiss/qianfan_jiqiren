@@ -686,6 +686,18 @@ async function startQianfanMessageListener(options = {}) {
     throw new Error('未找到千帆店铺工作台页面，无法启动监听');
   }
 
+  const seenShopTitles = new Set();
+  pages = pages.filter((page) => {
+    const key = String(page.shopTitle || page.pageTitle || '').trim();
+    if (!key || seenShopTitles.has(key)) return false;
+    seenShopTitles.add(key);
+    return true;
+  });
+
+  if (!pages.length) {
+    throw new Error('未找到千帆店铺工作台页面，无法启动监听');
+  }
+
   const state = {
     stopped: false,
     port,

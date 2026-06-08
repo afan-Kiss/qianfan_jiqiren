@@ -41,6 +41,8 @@ class RuntimeSupervisor extends EventEmitter {
     this.qianfanBootTimeoutMs = options.qianfanBootTimeoutMs ?? 180000;
     this.startAllPromise = null;
     this.startAllInProgress = false;
+    this.wechatBootCompleted = false;
+    this.wechatBootInProgress = false;
     this.workerStatusSnapshot = new Map();
     this.heartbeatSummaryTimer = null;
     this.lastWatchdogFeedAt = 0;
@@ -131,6 +133,7 @@ class RuntimeSupervisor extends EventEmitter {
 
     const label = WORKER_LABELS[workerName] || workerName;
     if (workerName === 'qianfan-listener' && next.qianfanReady && next.listenerReady) {
+      void this.ensureWechatWorkersStarted();
       const shopReport = patch.shopReport || prev.shopReport;
       const shops = Array.isArray(shopReport?.shops) ? shopReport.shops : [];
       const shopNames = shops
@@ -586,6 +589,46 @@ class RuntimeSupervisor extends EventEmitter {
     }
   }
 
+  async startWechatWorkers() {
+    if (this.wechatBootCompleted) {
+      return { ok: true, alreadyStarted: true };
+    }
+
+    this.userLog('千帆已就绪，正在启动微信…', { dedupKey: 'supervisor-start-wechat' });
+
+    for (const workerName of WECHAT_BOOT_ORDER) {
+      await this.startWorker(workerName);
+      await new Promise((resolve) => setTimeout(resolve, this.startWorkerDelayMs));
+    }
+
+    this.wechatBootCompleted = true;
+    return { ok: true };
+  }
+
+  async ensureWechatWorkersStarted() {
+    if (this.disposed || this.wechatBootCompleted || this.wechatBootInProgress) return;
+    const listener = this.getWorkerStatus('qianfan-listener');
+    if (!(listener.qianfanReady && listener.listenerReady)) return;
+
+    this.wechatBootInProgress = true;
+    try {
+      await this.startWechatWorkers();
+      const workers = START_ORDER.map((name) => this.getWorkerStatus(name));
+      const anyFailed = workers.some((w) => w.status === 'failed' || w.status === 'timeout');
+      if (!anyFailed && ['degraded', 'starting'].includes(this.state.supervisorStatus)) {
+        this.state.setSupervisorStatus('running');
+        const summary = buildWorkerModulesSummary(this.getStatus());
+        this.userLog(`各模块已启动：${summary}`, {
+          dedupKey: 'supervisor-started:deferred',
+        });
+        this.startHeartbeatSummaryTimer();
+      }
+      this.emitStatus();
+    } finally {
+      this.wechatBootInProgress = false;
+    }
+  }
+
   async waitForQianfanListenerReady(timeoutMs = this.qianfanBootTimeoutMs) {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
@@ -629,15 +672,11 @@ class RuntimeSupervisor extends EventEmitter {
       this.state.setSupervisorStatus('degraded');
       this.startHeartbeatSummaryTimer();
       this.emitStatus();
+      void this.ensureWechatWorkersStarted();
       return this.getStatus();
     }
 
-    this.userLog('千帆已就绪，正在启动微信…', { dedupKey: 'supervisor-start-wechat' });
-
-    for (const workerName of WECHAT_BOOT_ORDER) {
-      await this.startWorker(workerName);
-      await new Promise((resolve) => setTimeout(resolve, this.startWorkerDelayMs));
-    }
+    await this.startWechatWorkers();
 
     const workers = START_ORDER.map((name) => this.getWorkerStatus(name));
     const anyFailed = workers.some((w) => w.status === 'failed' || w.status === 'timeout');
@@ -661,6 +700,8 @@ class RuntimeSupervisor extends EventEmitter {
   async stopAll(reason = 'manual') {
     this.cancelAllPendingRestarts();
     this.clearHeartbeatSummaryTimer();
+    this.wechatBootCompleted = false;
+    this.wechatBootInProgress = false;
     this.state.setSupervisorStatus('stopping');
     this.emitStatus();
 

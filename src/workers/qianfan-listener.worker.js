@@ -97,6 +97,12 @@ async function handleBuyerMessage(message, options = {}) {
     return;
   }
 
+  const preview = String(message.text || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  runtime.userLog(
+    `收到千帆买家消息：${message.shopTitle || '未知店铺'} ${message.buyerNick || '买家'} ${preview || '【空】'}`,
+    { dedupKey: `buyer-received:${idempotencyKey}` },
+  );
+
   const sessionResult = await persistWithRetry(
     'sessionContext.save',
     { message },

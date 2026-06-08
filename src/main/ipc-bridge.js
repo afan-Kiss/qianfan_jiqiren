@@ -34,9 +34,8 @@ function getPaths() {
 }
 
 async function preflightLaunchQianfanViaCmd() {
-  const { ensureQianfanDevToolsReady, resolveClientConfig } = require('../qianfan-client-launcher');
+  const { createQianfanRuntimeController } = require('../adapters/qianfan-runtime-controller');
 
-  const cfg = resolveClientConfig({ ...config.qianfanDebug, root: config.root });
   const pushLog = (level, message) => {
     safePush('runtime:log', {
       level,
@@ -46,10 +45,11 @@ async function preflightLaunchQianfanViaCmd() {
     });
   };
 
-  const result = await ensureQianfanDevToolsReady(cfg, {
-    canLaunch: true,
+  const controller = createQianfanRuntimeController({
+    config: { ...config.qianfanDebug, root: config.root },
     log: (level, message) => pushLog(level, message),
   });
+  const result = await controller.ensureQianfanReady();
 
   if (!result.ok) {
     return { ok: false, lastError: result.lastError || '千帆未能自动启动' };

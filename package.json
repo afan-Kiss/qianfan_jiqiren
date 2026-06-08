@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --win dir",
-    "build:dir": "electron-builder --win dir --publish never",
+    "build:dir": "node scripts/prebuild-kill-packaged-app.js && electron-builder --win dir --publish never",
     "build:portable": "electron-builder --win portable",
     "build:setup": "electron-builder --win nsis",
     "start:cli": "node src/wxbot-new-oneclick.js",
