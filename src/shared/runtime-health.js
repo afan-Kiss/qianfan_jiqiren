@@ -448,6 +448,10 @@ function isRoutineHealthActivityMessage(message = '') {
   return /看门狗已喂食|看门狗已喂|watchdog feed|worker heartbeat|心跳正常|健康检查正常|看门狗已喂食：/i.test(text);
 }
 
+function isRoutineWatchdogOkMessage(message = '') {
+  return /^看门狗正常运行，最近喂狗：/.test(String(message || '').trim());
+}
+
 module.exports = {
   LEVEL,
   computeRuntimeHealth,
@@ -457,5 +461,6 @@ module.exports = {
   computeRelayHealth,
   buildHealthTransitionLogs,
   isRoutineHealthActivityMessage,
+  isRoutineWatchdogOkMessage,
   levelToProgressStatus,
 };

@@ -41,6 +41,25 @@ const PERSIST_RETRY_ATTEMPTS = Number(process.env.QIANFAN_PERSIST_RETRY_ATTEMPTS
 const PERSIST_RETRY_DELAY_MS = Number(process.env.QIANFAN_PERSIST_RETRY_DELAY_MS || 500);
 let retryTimer = null;
 let runtimeController = null;
+let listenerCleanupRegistered = false;
+
+function isRuntimeShuttingDown() {
+  return process.env.QIANFAN_RUNTIME_SHUTTING_DOWN === '1';
+}
+
+function ensureListenerCleanupRegistered() {
+  if (listenerCleanupRegistered) return;
+  listenerCleanupRegistered = true;
+  runtime.registerCleanup(async () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    await stopBuyerListener();
+  });
+}
+
+ensureListenerCleanupRegistered();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,7 +152,7 @@ async function handleBuyerMessage(message, options = {}) {
 }
 
 function scheduleRetry(delayMs = RETRY_MS) {
-  if (retryTimer || process.env.QIANFAN_SIM_MODE === '1') return;
+  if (retryTimer || process.env.QIANFAN_SIM_MODE === '1' || isRuntimeShuttingDown()) return;
   retryTimer = setTimeout(() => {
     retryTimer = null;
     void tryStartListener();
@@ -142,6 +161,8 @@ function scheduleRetry(delayMs = RETRY_MS) {
 }
 
 async function tryStartListener() {
+  if (isRuntimeShuttingDown()) return;
+
   reportListenerStatus({
     phase: 'starting',
     qianfanReady: false,
@@ -241,24 +262,6 @@ async function tryStartListener() {
     qianfanRuntime,
     shopReport: readyResult.attachResult?.shopReport || null,
     lastError: '',
-  });
-
-  runtime.registerCleanup(async (reason) => {
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
-    }
-    await stopBuyerListener();
-    if (runtimeController?.stopOwnedQianfan) {
-      await runtimeController.stopOwnedQianfan();
-    }
-    if (reason === 'app-quit') {
-      const qianfanCfg = config.qianfanDebug || {};
-      if (qianfanCfg.autoCloseExistingQianfanClient !== false) {
-        const { killExistingQianfanClient } = require('../qianfan-client-launcher');
-        killExistingQianfanClient(qianfanCfg.qianfanClientProcessName || '千帆客服工作台.exe');
-      }
-    }
   });
 }
 

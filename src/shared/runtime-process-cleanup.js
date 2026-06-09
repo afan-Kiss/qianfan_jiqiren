@@ -1,6 +1,4 @@
 const { execSync } = require('child_process');
-const config = require('../wechat/wxbot-new-config');
-const { killExistingQianfanClient } = require('../qianfan-client-launcher');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -18,26 +16,21 @@ function killProcessByImage(processName) {
 }
 
 /**
- * 软件退出时结束由中转拉起的附属进程（不结束 WeChat.exe / Weixin.exe）。
+ * 软件退出时结束由中转拉起的附属进程（不结束 WeChat.exe / Weixin.exe / 千帆客服工作台）。
+ * 千帆仅在「运行中且未开调试端口、需切换调试模式启动」时由 launcher 结束，退出软件时不结束千帆。
  * @param {{ killWxbot?: boolean, killQianfan?: boolean, reason?: string }} options
  */
 async function stopRuntimeChildProcesses(options = {}) {
-  const qianfanCfg = config.qianfanDebug || {};
   const killWxbot = options.killWxbot !== false;
-  const killQianfan = options.killQianfan !== false
-    && qianfanCfg.autoCloseExistingQianfanClient !== false;
+  // 无论 options.killQianfan 传什么，退出时都不结束千帆
+  void options.killQianfan;
 
   if (killWxbot) {
     killProcessByImage('wxbot.exe');
   }
-  if (killQianfan) {
-    killExistingQianfanClient(
-      qianfanCfg.qianfanClientProcessName || '千帆客服工作台.exe',
-    );
-  }
 
   await sleep(300);
-  return { killWxbot, killQianfan, reason: options.reason || 'app-quit' };
+  return { killWxbot, killQianfan: false, reason: options.reason || 'app-quit' };
 }
 
 module.exports = {

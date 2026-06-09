@@ -85,6 +85,63 @@ function killExistingQianfanClient(processName) {
   }
 }
 
+async function isQianfanClientInDebugMode(rawConfig) {
+  const config = resolveClientConfig(rawConfig);
+  const running = isQianfanProcessRunning(config.qianfanClientProcessName);
+  if (!running) {
+    return { running: false, debugMode: false };
+  }
+  const probe = await probeDevTools(config);
+  return { running: true, debugMode: probe.ok === true, probe };
+}
+
+function isRuntimeShuttingDown() {
+  return process.env.QIANFAN_RUNTIME_SHUTTING_DOWN === '1';
+}
+
+/**
+ * 仅当千帆在运行且未开启调试端口时才结束进程（用于切换为调试模式启动）。
+ * 必须显式 allowKill:true；退出/停止中转/attach 探测时一律不结束千帆。
+ */
+async function killQianfanClientIfNotInDebugMode(rawConfig, options = {}) {
+  const config = resolveClientConfig(rawConfig);
+  const log = createLaunchLogger(options.log);
+
+  if (isRuntimeShuttingDown()) {
+    return { killed: false, reason: 'runtime_shutting_down' };
+  }
+
+  if (options.allowKill !== true) {
+    return { killed: false, reason: 'kill_not_allowed' };
+  }
+
+  if (!isQianfanProcessRunning(config.qianfanClientProcessName)) {
+    return { killed: false, reason: 'not_running' };
+  }
+
+  const probe = await probeDevTools(config);
+  if (probe.ok) {
+    log('info', '[千帆] 千帆已在调试模式运行，不会结束进程');
+    return { killed: false, reason: 'debug_mode', probe };
+  }
+
+  if (config.autoCloseExistingQianfanClient === false) {
+    return {
+      killed: false,
+      reason: 'auto_close_disabled',
+      lastError: `千帆已运行但未开启调试端口 ${config.devtoolsPort}，请关闭后重试`,
+    };
+  }
+
+  log('info', '[千帆] 千帆已在运行但未开启调试端口，正在关闭并以调试模式重新启动…');
+  killExistingQianfanClient(config.qianfanClientProcessName);
+  await waitForProcessExit(
+    config.qianfanClientProcessName,
+    options.closeWaitMs || config.closeWaitMs || 8000,
+  );
+  return { killed: true, reason: 'not_debug_mode' };
+}
+
 function isQianfanProcessRunning(processName = DEFAULT_CLIENT_PROCESS) {
   try {
     const output = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, {
@@ -394,16 +451,46 @@ async function ensureQianfanDevToolsReady(cfg, options = {}) {
   }
 
   if (isQianfanProcessRunning(config.qianfanClientProcessName)) {
-    if (config.autoCloseExistingQianfanClient === false) {
-      return {
-        ok: false,
-        reason: 'no_debug_port',
-        lastError: `千帆已运行但未开启调试端口 ${config.devtoolsPort}，请关闭后重试`,
-      };
+    const closeResult = await killQianfanClientIfNotInDebugMode(config, {
+      log: options.log,
+      closeWaitMs: config.closeWaitMs,
+      allowKill: canLaunch && options.allowKillNonDebugClient !== false,
+    });
+    if (!closeResult.killed) {
+      if (closeResult.reason === 'debug_mode' && closeResult.probe?.ok) {
+        log('info', `[千帆] DevTools ${config.devtoolsPort}：可访问`);
+        return {
+          ok: true,
+          phase: 'attached',
+          alreadyRunning: true,
+          devtoolsAccessible: true,
+          probe: closeResult.probe,
+          pageCount: closeResult.probe.pageCount,
+          list: closeResult.probe.list,
+        };
+      }
+      if (closeResult.reason === 'auto_close_disabled') {
+        return {
+          ok: false,
+          reason: 'no_debug_port',
+          lastError: closeResult.lastError || `千帆已运行但未开启调试端口 ${config.devtoolsPort}，请关闭后重试`,
+        };
+      }
+      if (closeResult.reason === 'runtime_shutting_down') {
+        return {
+          ok: false,
+          reason: 'shutting_down',
+          lastError: '软件正在退出，已跳过千帆进程切换',
+        };
+      }
+      if (isQianfanProcessRunning(config.qianfanClientProcessName)) {
+        return {
+          ok: false,
+          reason: 'no_debug_port',
+          lastError: `千帆已运行但未开启调试端口 ${config.devtoolsPort}，请手动以调试模式启动`,
+        };
+      }
     }
-    log('info', '[千帆] 千帆已在运行但未开启调试端口，正在关闭并以调试模式重新启动…');
-    killExistingQianfanClient(config.qianfanClientProcessName);
-    await waitForProcessExit(config.qianfanClientProcessName, config.closeWaitMs || 8000);
   }
 
   const doLaunch = options.launchFn || ((cfg) => launchQianfanClient(cfg, log));
@@ -456,19 +543,13 @@ async function ensureQianfanDevToolsReady(cfg, options = {}) {
 }
 
 async function closeQianfanClientIfRunning(config, logFn = println) {
-  if (config.autoCloseExistingQianfanClient === false) return false;
-  if (!isQianfanProcessRunning(config.qianfanClientProcessName)) return false;
-  const probe = await probeDevTools(config);
-  if (probe.ok) return false;
-  const log = (message) => {
-    if (typeof logFn !== 'function') return;
-    if (logFn.length >= 2) logFn('info', message);
-    else logFn(message);
-  };
-  log('[千帆] 千帆已在运行但未开启调试端口，正在关闭并以调试模式重新启动…');
-  killExistingQianfanClient(config.qianfanClientProcessName);
-  await waitForProcessExit(config.qianfanClientProcessName, config.closeWaitMs || 8000);
-  return true;
+  const clientConfig = resolveClientConfig(config);
+  const result = await killQianfanClientIfNotInDebugMode(clientConfig, {
+    log: logFn,
+    closeWaitMs: clientConfig.closeWaitMs,
+    allowKill: true,
+  });
+  return result.killed === true;
 }
 
 async function ensureQianfanClientDebugReady(cfg) {
@@ -510,6 +591,9 @@ module.exports = {
   resolveClientConfig,
   probeDevTools,
   killExistingQianfanClient,
+  isQianfanClientInDebugMode,
+  killQianfanClientIfNotInDebugMode,
+  isRuntimeShuttingDown,
   isQianfanProcessRunning,
   isDistributedWorkerProcess,
   canLaunchQianfanGuiLocally,

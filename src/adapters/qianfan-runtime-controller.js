@@ -192,15 +192,10 @@ function createQianfanRuntimeController(options = {}) {
   }
 
   async function stopOwnedQianfan() {
-    if (!ownedPid) return { ok: true, stopped: false };
-    try {
-      process.kill(ownedPid);
-    } catch {
-      // ignore
-    }
+    // 停止 worker/中转时不结束千帆；非调试千帆的切换仅由 ensureQianfanDevToolsReady 负责
     ownedPid = null;
     if (phase === 'ready' || phase === 'attached') phase = 'idle';
-    return { ok: true, stopped: true };
+    return { ok: true, stopped: false };
   }
 
   function buildShopAttachResult(cdpResult) {

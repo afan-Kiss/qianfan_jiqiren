@@ -126,7 +126,9 @@ async function main() {
   assert.ok(recoveryLogs.some((item) => /恢复正常/.test(item.message)));
 
   assert.strictEqual(formatActivityLogEntry({ userFacing: true, message: '看门狗已喂食：xxx' }).show, false);
+  assert.strictEqual(formatActivityLogEntry({ userFacing: true, message: '看门狗正常运行，最近喂狗：19:20:00' }).show, true);
   assert.strictEqual(isRoutineHealthActivityMessage('worker heartbeat ok'), true);
+  assert.strictEqual(isRoutineHealthActivityMessage('看门狗正常运行，最近喂狗：19:20:00'), false);
 
   const appSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'app.js'), 'utf8');
   assert.match(appSource, /buildWorkerProgressLine/);
@@ -134,8 +136,16 @@ async function main() {
   assert.doesNotMatch(appSource, /setInterval\([\s\S]*lastWatchdogFeedAt\s*=\s*Date\.now/);
 
   const supervisorSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'runtime', 'supervisor.js'), 'utf8');
-  assert.match(supervisorSource, /maybeLogHealthTransitions/);
+  assert.match(supervisorSource, /maybeEmitStatusThrottled/);
+  assert.match(supervisorSource, /maybeEmitStatusThrottled\(\)/);
+  assert.match(supervisorSource, /看门狗正常运行，最近喂狗：/);
   assert.doesNotMatch(supervisorSource, /userLog\(`看门狗已喂食/);
+  const summaryTimerBlock = supervisorSource.slice(
+    supervisorSource.indexOf('startHeartbeatSummaryTimer()'),
+    supervisorSource.indexOf('startHeartbeatSummaryTimer()') + 900,
+  );
+  assert.doesNotMatch(summaryTimerBlock, /emitStatus\(\)/, '4h summary timer must not emit status');
+  assert.match(summaryTimerBlock, /看门狗正常运行，最近喂狗：/);
 
   const runId = crypto.randomBytes(4).toString('hex');
   const testDataDir = path.join(__dirname, '..', 'data', 'test-runtime', `homepage-health-${runId}`);
@@ -175,6 +185,20 @@ async function main() {
   supervisor.emitStatus();
   supervisor.emitStatus();
   assert.strictEqual(userLogs.filter((msg) => /看门狗已喂食/.test(msg)).length, 0);
+
+  let statusPushCount = 0;
+  supervisor.removeAllListeners('status');
+  supervisor.on('status', () => { statusPushCount += 1; });
+  const feedBefore = supervisor.lastWatchdogFeedAt;
+  supervisor.handleWorkerMessage('qianfan-listener', {
+    type: 'worker.heartbeat',
+    workerName: 'qianfan-listener',
+    time: Date.now(),
+  });
+  assert.ok(supervisor.lastWatchdogFeedAt >= feedBefore, 'heartbeat must refresh lastWatchdogFeedAt');
+  assert.ok(statusPushCount >= 1, 'worker heartbeat must push runtime status');
+  const pushed = supervisor.getStatus();
+  assert.ok(pushed.lastWorkerHeartbeatAt, 'status must expose lastWorkerHeartbeatAt');
 
   fs.rmSync(testDataDir, { recursive: true, force: true });
   console.log('[check-homepage-health-status] passed');

@@ -19,8 +19,9 @@ const {
   buildHealthTransitionLogs,
 } = require('../shared/runtime-health');
 
-// 看门狗健康摘要：每 4 小时向 UI 播报一次（异常/重启仍即时记录）
+// 正常喂狗摘要：最多每 4 小时向「最近动态」写一条（异常/恢复仍即时记录）
 const HEARTBEAT_SUMMARY_MS = 4 * 60 * 60 * 1000;
+const STATUS_PUSH_THROTTLE_MS = 1000;
 
 class RuntimeSupervisor extends EventEmitter {
   constructor(options = {}) {
@@ -52,6 +53,7 @@ class RuntimeSupervisor extends EventEmitter {
     this.notifyAccountCount = 0;
     this.heartbeatSummaryTimer = null;
     this.lastWatchdogFeedAt = 0;
+    this.lastStatusEmitAt = 0;
 
     this.watchdog.on('timeout', (payload) => this.handleWatchdogTimeout(payload));
     this.messageBus.on('published', (message) => this.forwardBusMessage(message));
@@ -98,15 +100,30 @@ class RuntimeSupervisor extends EventEmitter {
 
   startHeartbeatSummaryTimer() {
     this.clearHeartbeatSummaryTimer();
-    // 看门狗继续内部喂狗；不向「最近动态」写入周期性日志。
     this.heartbeatSummaryTimer = setInterval(() => {
       if (this.disposed || this.state.supervisorStatus === 'stopped') return;
       if (!['running', 'starting', 'degraded'].includes(this.state.supervisorStatus)) return;
-      this.emitStatus();
+      if (!this.lastWatchdogFeedAt) return;
+      const feedDate = new Date(this.lastWatchdogFeedAt);
+      const clock = [
+        String(feedDate.getHours()).padStart(2, '0'),
+        String(feedDate.getMinutes()).padStart(2, '0'),
+        String(feedDate.getSeconds()).padStart(2, '0'),
+      ].join(':');
+      this.userLog(`看门狗正常运行，最近喂狗：${clock}`, {
+        dedupKey: `watchdog-routine:${Math.floor(Date.now() / HEARTBEAT_SUMMARY_MS)}`,
+      });
     }, HEARTBEAT_SUMMARY_MS);
     if (typeof this.heartbeatSummaryTimer.unref === 'function') {
       this.heartbeatSummaryTimer.unref();
     }
+  }
+
+  maybeEmitStatusThrottled() {
+    const now = Date.now();
+    if (now - this.lastStatusEmitAt < STATUS_PUSH_THROTTLE_MS) return;
+    this.lastStatusEmitAt = now;
+    this.emitStatus();
   }
 
   maybeLogHealthTransitions(nextHealth) {
@@ -504,6 +521,7 @@ class RuntimeSupervisor extends EventEmitter {
       }
       this.state.setWorkerStatus(workerName, patch);
       this.emit('heartbeat', { workerName, time: message.time || Date.now() });
+      this.maybeEmitStatusThrottled();
       return;
     }
 

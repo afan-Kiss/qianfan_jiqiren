@@ -228,6 +228,7 @@ function createWorkerRuntime(options = {}) {
   async function shutdown(reason = 'manual') {
     if (shuttingDown) return;
     shuttingDown = true;
+    process.env.QIANFAN_RUNTIME_SHUTTING_DOWN = '1';
     stopHeartbeat();
     for (const timer of timers) {
       clearInterval(timer);

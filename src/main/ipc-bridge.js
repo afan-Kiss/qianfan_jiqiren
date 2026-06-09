@@ -615,13 +615,14 @@ function registerIpcHandlers(app) {
 }
 
 async function stopBackendServices() {
+  process.env.QIANFAN_RUNTIME_SHUTTING_DOWN = '1';
   if (runtimeSupervisor) {
     await runtimeSupervisor.stopAll('app-quit');
     runtimeSupervisor.dispose();
     runtimeSupervisor = null;
     statusPushBound = false;
   }
-  await stopRuntimeChildProcesses({ reason: 'app-quit' });
+  await stopRuntimeChildProcesses({ reason: 'app-quit', killQianfan: false });
 }
 
 module.exports = {

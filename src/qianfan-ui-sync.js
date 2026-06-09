@@ -204,6 +204,7 @@ function patchMessageListBody(bodyTemplate, appCid) {
   try {
     const obj = JSON.parse(bodyTemplate);
     if (Object.prototype.hasOwnProperty.call(obj, 'appCid')) obj.appCid = cid;
+    if (Array.isArray(obj.appCids)) obj.appCids = [cid];
     if (Object.prototype.hasOwnProperty.call(obj, 'cid')) obj.cid = cid;
     if (obj.data && typeof obj.data === 'object' && Object.prototype.hasOwnProperty.call(obj.data, 'appCid')) {
       obj.data.appCid = cid;
@@ -358,58 +359,14 @@ async function syncQianfanConversationUi(ctx) {
     // ignore
   }
 
-  let localEcho = false;
-  if (!visibleInDom && text) {
-    try {
-      const echoResult = await cdpRuntimeEvaluate(
-        client.Runtime,
-        {
-          expression: `(function(){
-            var sync = window.__qfUiSync;
-            if (!sync) return false;
-            return sync.injectLocalEcho(${JSON.stringify(appCid)}, ${JSON.stringify(text)}, ${JSON.stringify(qianfanMsgId)});
-          })()`,
-          returnByValue: true,
-        },
-        CDP_EVAL_DEFAULT_MS
-      );
-      localEcho = Boolean(echoResult?.result?.value);
-      if (localEcho) {
-        println(`[千帆] PC 同步：已插入本地临时回显 msgId=${qianfanMsgId || 'n/a'}`);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  if (apiConfirmed && (visibleInDom || localEcho)) {
-    try {
-      await cdpRuntimeEvaluate(
-        client.Runtime,
-        {
-          expression: `(function(){
-            var sync = window.__qfUiSync;
-            if (sync) sync.cleanupLocalEcho(${JSON.stringify(qianfanMsgId)}, ${JSON.stringify(text)});
-            return true;
-          })()`,
-          returnByValue: true,
-        },
-        CDP_EVAL_DEFAULT_MS
-      );
-    } catch {
-      // ignore
-    }
-  }
-
-  const ok = apiConfirmed || visibleInDom || reselected || localEcho;
+  const ok = apiConfirmed || visibleInDom || reselected;
   if (ok) {
-    const mode = localEcho && !visibleInDom && !apiConfirmed ? '已插入本地临时回显' : '成功';
-    println(`[千帆] PC 同步：${mode}`);
+    println('[千帆] PC 同步：成功（仅观测/刷新，不插入假气泡）');
   } else {
-    println('[千帆] PC 同步：未确认，客服台如未显示请稍后手动刷新当前会话');
+    println('[千帆] PC 同步：未确认，请使用 qianfan-native-sync 触发原生链');
   }
 
-  return { ok, apiConfirmed, reselected, localEcho, visibleInDom };
+  return { ok, apiConfirmed, reselected, localEcho: false, visibleInDom, directDomMutationUsed: false };
 }
 
 module.exports = {

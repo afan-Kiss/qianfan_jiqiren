@@ -6,6 +6,17 @@
 
 ---
 
+## 最近更新（2026-06-09）
+
+| 功能 | 说明 |
+|------|------|
+| **发送后 PC 原生同步** | 千帆 ACK 成功后触发原生 sync/read 链（31010+30001），PC 客服台自动插入气泡、清除倒计时与待回复弹窗；不再注入假 DOM 气泡。详见 `docs/NATIVE-SYNC-AFTER-SEND.md` |
+| **首页健康状态实时刷新** | 千帆/微信/中转/worker 状态灯与「xx 秒前」基于真实心跳每秒更新；正常喂狗摘要最多 4 小时一条，异常/恢复即时写入最近动态 |
+| **退出不再结束千帆** | 退出软件、停止中转、worker 重启时均不结束千帆；**仅**在千帆运行但未开调试端口、需切换为 `--remote-debugging-port=9223` 启动时才会结束旧进程 |
+| **打包 prebuild 修复** | `npm run build:dir` 清理旧 `dist/win-unpacked` 时优先 rename，避免 `NoveHelper.dll` 占用导致 prebuild 长时间卡住 |
+
+---
+
 ## 功能概览
 
 | 能力 | 说明 |
@@ -87,7 +98,7 @@ npm run start:cli  # 命令行一键启动
 | 场景 | 自动处理 |
 |------|----------|
 | 千帆未运行 | 以调试参数自动启动 |
-| 千帆在运行，但 9223 不可访问 | 结束千帆进程 → 调试模式重启 |
+| 千帆在运行，但 9223 不可访问 | 结束非调试千帆 → 调试模式重启（**退出软件时不结束千帆**） |
 | 9223 已开，但不是千帆页面 | 若检测到千帆进程则重启；否则提示端口被 Chrome/Edge 占用 |
 | 9223 已开且为千帆调试页 | 直接接入，不重复启动 |
 
@@ -180,8 +191,10 @@ git@gitee.com:ff472336362/four-in-one-customer-service.git
 |------|------|
 | `npm start` | Electron 开发模式 |
 | `npm run build` | 打包 Windows 目录版 |
+| `npm run build:dir` | 打包目录版（含 prebuild 清理旧产物） |
 | `npm run build:portable` | 单文件便携版 |
 | `npm run check` | 快速检查（约 1–2 分钟） |
+| `npm run check:qianfan-kill-policy` | 校验退出时不误杀千帆 |
 | `npm run check:full` | 全量检查（含混沌/长跑） |
 | `npm run longrun:stable` | 100 天模拟稳定性测试 |
 

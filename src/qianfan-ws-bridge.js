@@ -47,9 +47,11 @@ function captureHttpTemplate(bridge, request) {
 }
 const { buildTextSendPayloadFromContext } = require('./qf-send-payload');
 const { getSessionContext } = require('./qianfan-data-store');
-const { syncQianfanConversationUi, installUiSyncBridge } = require('./qianfan-ui-sync');
+const { installUiSyncBridge } = require('./qianfan-ui-sync');
+const { triggerNativeSyncAfterAck, installNativeSyncBridge } = require('./qianfan-native-sync');
 const { println } = require('./utils');
 const { cdpRuntimeEvaluate, withTimeout, cdpAddScriptToEvaluateOnNewDocument, cdpNetworkEnable, cdpNetworkDisable } = require('./cdp-timeout');
+const { logBotSendLifecycle, summarizePayload } = require('./capture/bot-send-debug');
 
 const bridges = new Map();
 const shopWakeReconnect = new Map();
@@ -141,6 +143,18 @@ function appendJsonl(filePath, entry) {
 
 function writeSendDebug(entry) {
   appendJsonl(datedLogPath('qianfan-send-debug'), entry);
+  if (entry?.event && /prepare_send|ws_send_called|ack_ok|ack_fail|echo_ok|echo_optional_miss|send_fail/.test(entry.event)) {
+    logBotSendLifecycle(entry.event, {
+      ...entry,
+      shopTitle: entry.shopTitle || entry.shopId,
+      gotAck: entry.event === 'ack_ok' || entry.gotAck === true,
+      gotMessagePush: entry.event === 'echo_ok' || entry.gotMessagePush === true,
+      gotConversationUpdate: entry.gotConversationUpdate,
+      bubbleInserted: entry.bubbleInserted,
+      countdownCleared: entry.countdownCleared,
+      payloadSummary: entry.payload ? summarizePayload(entry.payload) : entry.payloadSummary,
+    });
+  }
 }
 
 function writeManualSendSample(entry) {
@@ -432,6 +446,8 @@ function waitForSendAck(bridge, ctx, timeoutMs = ACK_TIMEOUT_MS) {
         resolve({
           msgId: String(body.data.msgId),
           createAt: body.data.createAt,
+          ackParsed: parsed,
+          ackData: body.data || {},
           traceId: ctx.traceId,
           sMid: ctx.sMid,
           uuid: ctx.uuid,
@@ -522,6 +538,17 @@ async function verifyViaHttpMessageList(bridge, { appCid, msgId, text, sentAfter
   }
 
   return { verified: false, reason: 'http_not_found' };
+}
+
+function extractChatIdFromBridge(bridge) {
+  for (const tpl of bridge?.httpTemplates?.values() || []) {
+    const raw = String(tpl?.bodyTemplate || tpl?.postData || '');
+    const m = raw.match(/"chatIdList"\s*:\s*\[\s*"([^"]+)"/);
+    if (m?.[1]) return m[1];
+    const m2 = raw.match(/"chatId"\s*:\s*"([^"]+)"/);
+    if (m2?.[1]) return m2[1];
+  }
+  return '';
 }
 
 function patchMessageListBody(bodyTemplate, appCid) {
@@ -768,6 +795,7 @@ async function installWsHook(client) {
     // ignore
   }
   await cdpRuntimeEvaluate(Runtime, { expression: WS_HOOK_SCRIPT, returnByValue: true }).catch(() => {});
+  await installNativeSyncBridge(client);
 }
 
 async function sendViaPageRuntime(client, payloadStr, appCid) {
@@ -893,6 +921,9 @@ async function registerQianfanWsBridge(pageInfo, client) {
   const shopTitle = pageInfo.shopTitle || pageInfo.pageTitle || '';
   if (!shopTitle) return null;
 
+  if (client?.Network) {
+    await cdpNetworkEnable(client.Network);
+  }
   await installWsHook(client);
   await installUiSyncBridge(client);
 
@@ -1029,15 +1060,27 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
   writeSendDebug({
     event: 'prepare_send',
     shopTitle: shopLabel,
+    shopId: shopLabel,
     appCid,
+    conversationId: appCid,
+    buyerId: finalReceiverAppUids,
     receiverAppUids: finalReceiverAppUids,
     text,
     traceId: ctx.traceId,
+    ackId: ctx.traceId,
     sMid: ctx.sMid,
     uuid: ctx.uuid,
+    clientMsgId: ctx.uuid,
     seq: ctx.seq,
     sendSessionRequestId: sendSession?.requestId || null,
     payload: built.payload,
+    cmd: built.payload?.header?.action,
+    action: built.payload?.header?.action,
+    gotAck: false,
+    gotMessagePush: false,
+    gotConversationUpdate: false,
+    bubbleInserted: false,
+    countdownCleared: false,
   });
 
   writeBotSendSample({
@@ -1075,23 +1118,32 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
   const pcSync = await (async () => {
     try {
       return await withTimeout(
-        syncQianfanConversationUi({
+        triggerNativeSyncAfterAck({
+          bridge,
           shopTitle: bridge.shopTitle,
           appCid,
-          buyerNick,
-          qianfanMsgId: ack.msgId,
           text,
-          sentAt: sentAtMs,
-          page: bridge.pageInfo,
-          cdpSession: bridge.client,
-          messageListTpl: bridge.lastMessageListRequest,
+          ack,
+          ackParsed: ack.ackParsed,
+          receiverAppUids: finalReceiverAppUids,
+          seq: ctx.seq,
+          chatId: sessionContext?.chatId || extractChatIdFromBridge(bridge) || null,
+          token: sessionContext?.staffToken || '1#1#4#4333439630',
+          fixMode: 'ack_then_native_sync',
         }),
         UI_SYNC_TIMEOUT_MS,
-        'syncQianfanConversationUi'
+        'triggerNativeSyncAfterAck'
       );
     } catch (err) {
-      println(`[千帆] PC 同步超时/失败（不影响 ACK）：${err.message || err}`);
-      return { ok: false, apiConfirmed: false, reselected: false, localEcho: false };
+      println(`[千帆] PC 原生同步失败（不影响 ACK）：${err.message || err}`);
+      return {
+        event: 'send_final',
+        fixMode: 'ack_then_native_sync',
+        ackOk: true,
+        msgId: ack.msgId,
+        failedReason: String(err.message || err),
+        directDomMutationUsed: false,
+      };
     }
   })();
 
@@ -1112,12 +1164,63 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
     if (httpEcho.verified) echo = httpEcho;
   }
 
+  const sendSummary = {
+    shopId: shopLabel,
+    buyerId: finalReceiverAppUids,
+    conversationId: appCid,
+    staffId: built.payload?.body?.staffId || built.payload?.body?.operatorId || null,
+    clientMsgId: ctx.uuid,
+    msgId: ack.msgId,
+    seq: ctx.seq,
+    ackId: ctx.traceId,
+    cmd: built.payload?.header?.action,
+    action: built.payload?.header?.action,
+    gotAck: true,
+    gotMessagePush: echo.verified,
+    gotConversationUpdate: Boolean(pcSync?.conversationUpdatedByQianfan),
+    bubbleInserted: Boolean(pcSync?.pcBubbleInsertedByQianfan),
+    countdownCleared: Boolean(pcSync?.pcCountdownClearedByQianfan),
+    popupCleared: Boolean(pcSync?.pcPopupClearedByQianfan),
+    directDomMutationUsed: false,
+    payloadSummary: summarizePayload(built.payload),
+  };
+
+  writeSendDebug({
+    event: 'send_final',
+    fixMode: pcSync?.fixMode || 'ack_then_native_sync',
+    ...sendSummary,
+    httpMessageFound: pcSync?.httpMessageFound,
+    syncPushReceived: pcSync?.syncPushReceived,
+    nativeSyncHandlerCalled: pcSync?.nativeSyncHandlerCalled,
+    readFromOneSent: pcSync?.readFromOneSent,
+    messageListRefreshTriggered: pcSync?.messageListRefreshTriggered,
+    conversationListRefreshTriggered: pcSync?.conversationListRefreshTriggered,
+    pcBubbleInsertedByQianfan: pcSync?.pcBubbleInsertedByQianfan,
+    pcCountdownClearedByQianfan: pcSync?.pcCountdownClearedByQianfan,
+    pcPopupClearedByQianfan: pcSync?.pcPopupClearedByQianfan,
+    conversationUpdatedByQianfan: pcSync?.conversationUpdatedByQianfan,
+    directDomMutationUsed: false,
+    failedReason: pcSync?.failedReason || null,
+  });
+
   if (echo.verified) {
     println(`[千帆] 回显验证：成功 msgId=${echo.msgId || ack.msgId}（${echo.reason}）`);
-    writeSendDebug({ event: 'echo_ok', echoReason: echo.reason, qianfanMsgId: ack.msgId, ...ctx });
+    writeSendDebug({
+      event: 'echo_ok',
+      echoReason: echo.reason,
+      qianfanMsgId: ack.msgId,
+      ...ctx,
+      ...sendSummary,
+    });
   } else {
     println('[千帆] 回显验证：未捕获（PC 客服台可能未刷新，不影响 ACK 成功判定）');
-    writeSendDebug({ event: 'echo_optional_miss', echoReason: echo.reason, qianfanMsgId: ack.msgId, ...ctx });
+    writeSendDebug({
+      event: 'echo_optional_miss',
+      echoReason: echo.reason,
+      qianfanMsgId: ack.msgId,
+      ...ctx,
+      ...sendSummary,
+    });
   }
 
   bridge.lastSeq = seq;
@@ -1128,7 +1231,8 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
     ackConfirmed: true,
     echoVerified: echo.verified,
     echoReason: echo.reason,
-    pcSyncOk: pcSync.ok,
+    pcSyncOk: Boolean(pcSync?.conversationUpdatedByQianfan || pcSync?.pcBubbleInsertedByQianfan),
+    pcSync: pcSync,
     traceId: ctx.traceId,
     sMid: ctx.sMid,
     uuid: ctx.uuid,
