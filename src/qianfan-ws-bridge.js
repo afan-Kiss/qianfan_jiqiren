@@ -45,7 +45,11 @@ function captureHttpTemplate(bridge, request) {
     bridge.lastMessageListRequest = tpl;
   }
 }
-const { buildTextSendPayloadFromContext } = require('./qf-send-payload');
+const {
+  buildTextSendPayloadFromContext,
+  isUsableTextManualTemplate,
+  isValidAppCid,
+} = require('./qf-send-payload');
 const { getSessionContext } = require('./qianfan-data-store');
 const { installUiSyncBridge } = require('./qianfan-ui-sync');
 const { triggerNativeSyncAfterAck, installNativeSyncBridge } = require('./qianfan-native-sync');
@@ -63,10 +67,22 @@ const UI_SYNC_TIMEOUT_MS = 12000;
 
 const WS_HOOK_SCRIPT = `(function(){
   window.__qfImpaasSockets = (window.__qfImpaasSockets || []).filter(function(w){ return w && w.readyState === 1; });
-  if (window.__qfBridgeHooked) {
-    return { ok: true, already: true, count: window.__qfImpaasSockets.length };
+  function noteAckFrame(raw) {
+    try {
+      var s = String(raw || '');
+      if (s.indexOf('/message/send') < 0) return;
+      window.__qfAckEvents = window.__qfAckEvents || [];
+      window.__qfAckEvents.push({ t: Date.now(), raw: s });
+      if (window.__qfAckEvents.length > 80) window.__qfAckEvents.shift();
+    } catch (e) {}
   }
-  window.__qfBridgeHooked = true;
+  function hookWsMessage(ws) {
+    if (!ws || ws.__qfAckMsgHooked) return;
+    ws.__qfAckMsgHooked = true;
+    ws.addEventListener('message', function(ev) {
+      noteAckFrame(ev.data);
+    });
+  }
   function track(ws) {
     try {
       if (!ws || ws.readyState !== 1) return;
@@ -74,9 +90,45 @@ const WS_HOOK_SCRIPT = `(function(){
       if (u.includes('longlink') || u.includes('impaas') || u.includes('walle') || u.includes('xiaohongshu') || u.includes('edith')) {
         if (!window.__qfImpaasSockets.includes(ws)) window.__qfImpaasSockets.push(ws);
         if (u.includes('longlink')) ws.__qfSendRank = Math.max(ws.__qfSendRank || 0, 10);
+        hookWsMessage(ws);
       }
     } catch (e) {}
   }
+  window.__qfScanSendAck = function(ctx, sentAfterMs) {
+    var events = window.__qfAckEvents || [];
+    for (var i = events.length - 1; i >= 0; i--) {
+      var ev = events[i];
+      if (sentAfterMs && ev.t < sentAfterMs - 200) continue;
+      try {
+        var parsed = JSON.parse(ev.raw);
+        var hdr = parsed.header || {};
+        var body = parsed.body || {};
+        if (hdr.action !== '/message/send') continue;
+        if (Number(hdr.type) === 3) continue;
+        if (body.code == null && body.msg == null && !body.data) continue;
+        var match = (ctx.traceId && hdr.traceId === ctx.traceId)
+          || (ctx.sMid && hdr.sMid === ctx.sMid)
+          || (ctx.uuid && (body.data && body.data.uuid || body.uuid) === ctx.uuid);
+        if (!match) continue;
+        if (body.code === 0 && body.data && body.data.msgId) {
+          return { ok: true, msgId: String(body.data.msgId), createAt: body.data.createAt, ackParsed: parsed, ackData: body.data || {} };
+        }
+        if (body.code != null && body.code !== 0) {
+          return { ok: false, error: body.msg || ('ACK code ' + body.code) };
+        }
+      } catch (e) {}
+    }
+    return null;
+  };
+  window.__qfRehookImpaasSockets = function() {
+    var list = window.__qfImpaasSockets || [];
+    for (var i = 0; i < list.length; i++) track(list[i]);
+    return list.length;
+  };
+  if (window.__qfBridgeHooked) {
+    return { ok: true, already: true, count: window.__qfRehookImpaasSockets() };
+  }
+  window.__qfBridgeHooked = true;
   window.__qfPickSendSocket = function(appCid) {
     const list = (window.__qfImpaasSockets || []).filter(function(w){ return w && w.readyState === 1; });
     var best = null;
@@ -120,7 +172,7 @@ const WS_HOOK_SCRIPT = `(function(){
       return origSend.apply(this, arguments);
     };
   }
-  return { ok: true };
+  return { ok: true, count: window.__qfRehookImpaasSockets() };
 })()`;
 
 function debugDir() {
@@ -417,8 +469,12 @@ function matchesSendAck(parsed, ctx) {
   const hdr = parsed?.header || {};
   const body = parsed?.body || {};
   if (hdr.action !== '/message/send') return false;
-  if (Number(hdr.type) !== 131) return false;
-  if (body.code == null && body.msg == null) return false;
+  const ackType = Number(hdr.type);
+  if (ackType === 3) return false;
+  if (ackType !== 131 && ackType !== 130 && ackType !== 132) {
+    if (body.code == null || !body.data?.msgId) return false;
+  }
+  if (body.code == null && body.msg == null && !body.data?.msgId) return false;
 
   if (ctx.traceId && hdr.traceId && hdr.traceId === ctx.traceId) return true;
   if (ctx.sMid && hdr.sMid && hdr.sMid === ctx.sMid) return true;
@@ -427,43 +483,118 @@ function matchesSendAck(parsed, ctx) {
   return false;
 }
 
-function waitForSendAck(bridge, ctx, timeoutMs = ACK_TIMEOUT_MS) {
-  const startedAt = Date.now();
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      bridge.frameListeners.delete(onFrame);
-      reject(new Error('千帆 ACK 超时'));
-    }, timeoutMs);
+function parseSendAckFrame(parsed, ctx) {
+  if (!matchesSendAck(parsed, ctx)) return null;
 
-    function onFrame(parsed) {
-      if (Date.now() - startedAt < 50) return;
-      if (!matchesSendAck(parsed, ctx)) return;
+  const body = parsed?.body || {};
+  if (body.code === 0 && body.data?.msgId) {
+    return {
+      msgId: String(body.data.msgId),
+      createAt: body.data.createAt,
+      ackParsed: parsed,
+      ackData: body.data || {},
+      traceId: ctx.traceId,
+      sMid: ctx.sMid,
+      uuid: ctx.uuid,
+    };
+  }
 
-      const body = parsed?.body || {};
-      if (body.code === 0 && body.msg === 'success' && body.data?.msgId) {
-        clearTimeout(timer);
-        bridge.frameListeners.delete(onFrame);
-        resolve({
-          msgId: String(body.data.msgId),
-          createAt: body.data.createAt,
-          ackParsed: parsed,
-          ackData: body.data || {},
-          traceId: ctx.traceId,
-          sMid: ctx.sMid,
-          uuid: ctx.uuid,
-        });
-        return;
-      }
+  if (body.code != null && body.code !== 0) {
+    return { error: new Error(body.msg || `ACK code ${body.code}`) };
+  }
 
-      if (body.code != null && body.code !== 0) {
-        clearTimeout(timer);
-        bridge.frameListeners.delete(onFrame);
-        reject(new Error(body.msg || `ACK code ${body.code}`));
-      }
+  return null;
+}
+
+async function scanPageSendAck(bridge, ctx, sentAfterMs) {
+  if (!isBridgeCdpReady(bridge)) return null;
+  try {
+    const result = await cdpRuntimeEvaluate(bridge.client.Runtime, {
+      expression: `(function(){
+        return window.__qfScanSendAck && window.__qfScanSendAck(
+          ${JSON.stringify({ traceId: ctx.traceId, sMid: ctx.sMid, uuid: ctx.uuid })},
+          ${Number(sentAfterMs) || 0}
+        );
+      })()`,
+      returnByValue: true,
+    });
+    const value = result?.result?.value;
+    if (!value) return null;
+    if (value.ok && value.msgId) {
+      return {
+        msgId: String(value.msgId),
+        createAt: value.createAt,
+        ackParsed: value.ackParsed || null,
+        ackData: value.ackData || {},
+        traceId: ctx.traceId,
+        sMid: ctx.sMid,
+        uuid: ctx.uuid,
+        ackSource: 'page',
+      };
+    }
+    if (value.error) return { error: new Error(String(value.error)) };
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+async function waitForSendAck(bridge, ctx, sentAfterMs, timeoutMs = ACK_TIMEOUT_MS) {
+  let cdpHit = null;
+  let cdpError = null;
+
+  function onFrame(parsed) {
+    const frameTime = Number(parsed?.header?.sTime || 0);
+    if (sentAfterMs && frameTime && frameTime < sentAfterMs - 500) return;
+
+    const parsedAck = parseSendAckFrame(parsed, ctx);
+    if (!parsedAck) return;
+    if (parsedAck.error) {
+      cdpError = parsedAck.error;
+      return;
+    }
+    cdpHit = { ...parsedAck, ackSource: 'cdp' };
+  }
+
+  bridge.frameListeners.add(onFrame);
+  const deadline = Date.now() + timeoutMs;
+
+  try {
+    while (Date.now() < deadline) {
+      if (cdpHit) return cdpHit;
+      if (cdpError) throw cdpError;
+
+      const pageHit = await scanPageSendAck(bridge, ctx, sentAfterMs);
+      if (pageHit?.msgId) return pageHit;
+      if (pageHit?.error) throw pageHit.error;
+
+      await new Promise((r) => setTimeout(r, 150));
     }
 
-    bridge.frameListeners.add(onFrame);
-  });
+    const httpEcho = await verifyViaHttpMessageList(bridge, {
+      appCid: ctx.appCid,
+      msgId: null,
+      text: ctx.text,
+      sentAfterMs,
+    });
+    if (httpEcho.verified && httpEcho.msgId) {
+      println(`[千帆] ACK 超时但 HTTP 已确认消息送达 msgId=${httpEcho.msgId}（${httpEcho.reason}）`);
+      return {
+        msgId: String(httpEcho.msgId),
+        createAt: Date.now(),
+        ackParsed: null,
+        ackData: {},
+        traceId: ctx.traceId,
+        sMid: ctx.sMid,
+        uuid: ctx.uuid,
+        ackSource: 'http',
+      };
+    }
+
+    throw new Error('千帆 ACK 超时');
+  } finally {
+    bridge.frameListeners.delete(onFrame);
+  }
 }
 
 function waitForEchoVerify(bridge, shopTitle, { appCid, msgId, text, sentAfterMs }, timeoutMs = ECHO_VERIFY_MS) {
@@ -1008,8 +1139,12 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
     finalReceiverAppUids = [...sessionContext.receiverAppUids];
   }
 
+  if (!isValidAppCid(appCid)) {
+    throw new Error(`会话 appCid 无效（${appCid || '空'}），请等待该买家再次发消息后再回复`);
+  }
+
   const manualForCid = bridge.lastManualSendByAppCid.get(appCid) || null;
-  const manualTemplate = manualForCid || bridge.lastManualSendAny || null;
+  const manualTemplate = isUsableTextManualTemplate(manualForCid, appCid) ? manualForCid : null;
   if (!finalReceiverAppUids.length && manualForCid?.receiverAppUids?.length) {
     finalReceiverAppUids = manualForCid.receiverAppUids;
   }
@@ -1042,10 +1177,12 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
     manualTemplate,
   });
 
-  if (manualTemplate?.bodySummary) {
+  if (built.manualTemplateUsed && manualTemplate?.bodySummary) {
     printPayloadDiff(manualTemplate.bodySummary, summarizeBody(built.payload.body));
+  } else if (manualForCid && !built.manualTemplateUsed) {
+    println('[千帆发送] 跳过非文本手动样本，使用标准文本 payload');
   } else if (!manualTemplate) {
-    println('[千帆发送] 无手动样本，使用默认 payload 结构');
+    println('[千帆发送] 无可用手动样本，使用默认 payload 结构');
   }
 
   const ctx = {
@@ -1090,11 +1227,10 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
     text,
     payload: built.payload,
     bodySummary: summarizeBody(built.payload.body),
-    manualTemplateUsed: Boolean(manualTemplate),
+    manualTemplateUsed: Boolean(built.manualTemplateUsed),
   });
 
-  const sentAtMs = Date.now();
-  const ackPromise = waitForSendAck(bridge, ctx, ACK_TIMEOUT_MS);
+  ctx.appCid = appCid;
 
   const sent = await sendViaPageRuntime(bridge.client, built.payloadStr, appCid);
   if (!sent.ok) {
@@ -1104,15 +1240,16 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
 
   writeSendDebug({ event: 'ws_send_called', wsUrl: sent.url, wsRank: sent.rank, wsCount: sent.count, ...ctx });
 
+  const sentAtMs = Date.now();
   let ack;
   try {
-    ack = await ackPromise;
+    ack = await waitForSendAck(bridge, ctx, sentAtMs, ACK_TIMEOUT_MS);
   } catch (err) {
     writeSendDebug({ event: 'ack_fail', error: String(err.message || err), ...ctx });
     throw err;
   }
 
-  writeSendDebug({ event: 'ack_ok', qianfanMsgId: ack.msgId, createAt: ack.createAt, ...ctx });
+  writeSendDebug({ event: 'ack_ok', qianfanMsgId: ack.msgId, createAt: ack.createAt, ackSource: ack.ackSource || 'cdp', ...ctx });
   println(`[千帆] ACK 成功，msgId=${ack.msgId} traceId=${ctx.traceId}`);
 
   const pcSync = await (async () => {

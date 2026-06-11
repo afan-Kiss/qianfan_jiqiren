@@ -1,7 +1,7 @@
 /**
  * 读取本机千帆 DevTools 页面列表
  */
-const DEVTOOLS_PORT = Number(process.env.QIANFAN_DEVTOOLS_PORT || 9223);
+const DEVTOOLS_PORT = Number(process.env.QIANFAN_DEVTOOLS_PORT || 9322);
 const DEVTOOLS_HOST = process.env.QIANFAN_DEVTOOLS_HOST || '127.0.0.1';
 
 async function fetchDevToolsJsonList(port = DEVTOOLS_PORT, host = DEVTOOLS_HOST) {

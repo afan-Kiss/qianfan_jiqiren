@@ -26,7 +26,7 @@ function buildDefaultConfig() {
     ui: { autoStart: false },
     qianfanDebug: {
       enabled: true,
-      devtoolsPort: 9223,
+      devtoolsPort: 9322,
       devtoolsHost: '127.0.0.1',
       qianfanClientExePath: 'E:\\千帆\\eva\\千帆客服工作台.exe',
       qianfanClientWorkingDir: 'E:\\千帆\\eva',
@@ -36,7 +36,7 @@ function buildDefaultConfig() {
       expectedShopCount: 4,
       waitTimeoutMs: 60000,
       checkIntervalMs: 2000,
-      closeWaitMs: 2000,
+      closeWaitMs: 10000,
     },
   };
 }

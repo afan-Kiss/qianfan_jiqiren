@@ -8,6 +8,7 @@ const {
   isDistributedWorkerProcess,
   ensureQianfanDevToolsReady,
   launchQianfanClientAndVerify,
+  buildDefaultClientArgs,
 } = require('../qianfan-client-launcher');
 
 const DEFAULT_CLIENT_EXE = 'E:\\千帆\\eva\\千帆客服工作台.exe';
@@ -57,12 +58,12 @@ function resolveConfig(cfg = {}) {
     expectedShopCount: Number(cfg.expectedShopCount || 4),
     waitTimeoutMs: Number(cfg.waitTimeoutMs || PORT_WAIT_MS),
     checkIntervalMs: Number(cfg.checkIntervalMs || 2000),
-    closeWaitMs: Number(cfg.closeWaitMs || 2000),
+    closeWaitMs: Number(cfg.closeWaitMs || 10000),
     qianfanClientArgs: Array.isArray(cfg.qianfanClientArgs) && cfg.qianfanClientArgs.length
       ? cfg.qianfanClientArgs.map((arg) =>
           String(arg).replace(/9223/g, String(port)).replace(/127\.0\.0\.1/g, host),
         )
-      : [`--remote-debugging-port=${port}`],
+      : buildDefaultClientArgs(port, host).map((arg) => String(arg)),
   };
 }
 
@@ -343,8 +344,8 @@ function createQianfanRuntimeController(options = {}) {
         canLaunch: autoLaunch,
         attachWaitMs: !autoLaunch
           ? (launchBlockedInWorker
-            ? Math.min(config.waitTimeoutMs || 60000, 30000)
-            : Math.min(config.waitTimeoutMs || 60000, 3000))
+            ? Math.max(config.waitTimeoutMs || 120000, 120000)
+            : Math.min(config.waitTimeoutMs || 120000, 3000))
           : undefined,
         launchFn: async (cfg) => {
           const result = await launchClientFn(cfg, logFn);

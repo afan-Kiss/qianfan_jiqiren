@@ -252,7 +252,7 @@ const qianfanDebugFile = fileCfg.qianfanDebug || {};
 const resolvedQianfanPaths = resolveQianfanClientPaths(fileCfg);
 const qianfanDebug = {
   enabled: qianfanDebugFile.enabled !== false,
-  devtoolsPort: pickNum('devtoolsPort', qianfanDebugFile.devtoolsPort || fileCfg.qianfanDevtoolsPort || 9223),
+  devtoolsPort: pickNum('devtoolsPort', qianfanDebugFile.devtoolsPort || fileCfg.qianfanDevtoolsPort || 9322),
   devtoolsHost: qianfanDebugFile.devtoolsHost || '127.0.0.1',
   browserExePath: String(qianfanDebugFile.browserExePath || '').trim(),
   userDataDir: qianfanDebugFile.userDataDir || 'runtime/qianfan-debug-profile',

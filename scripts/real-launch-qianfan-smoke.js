@@ -5,6 +5,7 @@ const {
   isQianfanProcessRunning,
   probeDevTools,
   waitForProcessExit,
+  resolveClientConfig,
   DEFAULT_CLIENT_EXE,
   DEFAULT_CLIENT_PROCESS,
 } = require('../src/qianfan-client-launcher');
@@ -41,7 +42,7 @@ async function main() {
 
   console.log('[real-launch-qianfan-smoke] step 3: verify process and devtools');
   const processRunning = isQianfanProcessRunning(DEFAULT_CLIENT_PROCESS);
-  const probe = await probeDevTools({ devtoolsPort: 9223, devtoolsHost: '127.0.0.1' });
+  const probe = await probeDevTools(resolveClientConfig({}));
 
   console.log('[real-launch-qianfan-smoke] RESULT:');
   console.log(`  ensureQianfanDevToolsReady.ok = ${result.ok}`);
