@@ -61,7 +61,9 @@
     "rollback:doudian:asar": "node scripts/rollback-doudian-asar.js",
     "smoke:doudian": "node scripts/smoke-doudian-bridge.js",
     "cdp:inspect": "node scripts/inspect-cdp-bridge.js",
-    "cdp:smoke": "node scripts/smoke-cdp-bridge.js"
+    "cdp:smoke": "node scripts/smoke-cdp-bridge.js",
+    "history:inspect": "node scripts/history-inspect.js",
+    "history:sync": "node scripts/history-sync.js"
   },
   "engines": {
     "node": ">=18"

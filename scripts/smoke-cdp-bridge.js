@@ -3,8 +3,7 @@ const path = require('path');
 const { getCdpBridgeConfig } = require('../src/shared/config');
 const { ensureDir, resolveLogsDir } = require('../src/shared/app-root');
 const { bridgeLog } = require('../src/shared/bridge-log');
-const { detectDevToolsPort } = require('../src/services/cdp/cdp-port-detector');
-const { discoverTargets } = require('../src/services/cdp/cdp-target-manager');
+const { ensureDebugClientReady } = require('../src/services/runtime/ensure-debug-client-ready');
 const { CdpBridgeService } = require('../src/services/cdp/cdp-bridge-service');
 const { closeBridgeDb, getBridgeDb } = require('../src/services/bridge/bridge-db');
 
@@ -24,21 +23,17 @@ async function main() {
   const cfg = getCdpBridgeConfig();
   const startedAt = new Date().toISOString();
 
-  // 1. CDP port
-  const portDetect = await detectDevToolsPort();
-  if (portDetect.ok) pass('cdp_port', `port=${portDetect.port}`);
+  const clientRuntime = await ensureDebugClientReady();
+  const portDetect = clientRuntime.portDetect || { ok: Boolean(clientRuntime.devtoolsPort), port: clientRuntime.devtoolsPort, reason: clientRuntime.reason };
+  if (portDetect.ok || clientRuntime.devtoolsPort) pass('cdp_port', `port=${clientRuntime.devtoolsPort}`);
   else fail('cdp_port', portDetect.reason || 'no_devtools_port');
 
-  // 2. targets
-  let targets = [];
-  if (portDetect.ok) {
-    const discovered = await discoverTargets({ port: portDetect.port, host: portDetect.host });
-    targets = discovered.targets || [];
-    if (discovered.ok) pass('discover_targets', `count=${targets.length}`);
-    else fail('discover_targets', discovered.reason || 'no_matching_targets');
-  } else {
-    fail('discover_targets', 'skipped: no port');
-  }
+  if (clientRuntime.killedExistingClient) fail('client_reuse', 'unexpected taskkill');
+  else pass('client_reuse', `reused=${clientRuntime.reusedExistingClient} relaunched=${clientRuntime.relaunchedClient}`);
+
+  let targets = clientRuntime.matchedTargets || [];
+  if (clientRuntime.ready && targets.length) pass('discover_targets', `count=${targets.length}`);
+  else fail('discover_targets', clientRuntime.reason || 'no_matching_targets');
 
   // 3-6. connect, inject, listen, db
   let health = {};
@@ -88,6 +83,11 @@ async function main() {
     finishedAt: new Date().toISOString(),
     ok: allRequiredOk,
     steps,
+    clientRuntime: {
+      reusedExistingClient: clientRuntime.reusedExistingClient,
+      killedExistingClient: clientRuntime.killedExistingClient,
+      relaunchedClient: clientRuntime.relaunchedClient,
+    },
     health,
     stats: report.stats || {},
   };

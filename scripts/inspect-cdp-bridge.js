@@ -3,8 +3,7 @@ const path = require('path');
 const { getCdpBridgeConfig } = require('../src/shared/config');
 const { ensureDir, resolveLogsDir } = require('../src/shared/app-root');
 const { bridgeLog } = require('../src/shared/bridge-log');
-const { detectDevToolsPort } = require('../src/services/cdp/cdp-port-detector');
-const { discoverTargets } = require('../src/services/cdp/cdp-target-manager');
+const { ensureDebugClientReady } = require('../src/services/runtime/ensure-debug-client-ready');
 const { CdpBridgeService } = require('../src/services/cdp/cdp-bridge-service');
 const { closeBridgeDb } = require('../src/services/bridge/bridge-db');
 const { healthSummaryLines } = require('../src/services/bridge/bridge-health');
@@ -12,7 +11,8 @@ const { healthSummaryLines } = require('../src/services/bridge/bridge-health');
 function buildSuggestions(report) {
   const tips = [];
   if (!report.portDetect?.ok) {
-    tips.push('未检测到 DevTools 端口：请用 --remote-debugging-port=9222 启动抖店/千帆客服台，或确认 config 中 cdpBridge.ports 正确。');
+    tips.push('未检测到 DevTools 端口：请用 --remote-debugging-port=9222 启动抖店/千帆客服台。');
+    tips.push('本次未关闭客服台，未重新打开客服台（clientRuntime 默认只复用）。');
   }
   if (report.portDetect?.ok && !report.targetDiscover?.ok) {
     tips.push('有 DevTools 端口但未匹配客服页：请打开 IM/客服窗口，并检查 allowedUrlKeywords。');
@@ -36,6 +36,12 @@ function writeReports(report) {
   const lines = [
     'CDP Bridge Inspect Report',
     `generatedAt: ${report.generatedAt}`,
+    '',
+    '=== 客户端复用 ===',
+    `reusedExistingClient: ${report.clientRuntime?.reusedExistingClient}`,
+    `killedExistingClient: ${report.clientRuntime?.killedExistingClient}`,
+    `relaunchedClient: ${report.clientRuntime?.relaunchedClient}`,
+    `message: ${report.clientRuntime?.message || ''}`,
     '',
     '=== 端口检测 ===',
     JSON.stringify(report.portDetect, null, 2),
@@ -73,17 +79,28 @@ async function main() {
   const cfg = getCdpBridgeConfig();
   bridgeLog('[BRIDGE_HEALTH]', '开始 CDP 桥 inspect');
 
-  const portDetect = await detectDevToolsPort();
-  let targetDiscover = { ok: false, targets: [], allTargets: [] };
-  if (portDetect.ok) {
-    targetDiscover = await discoverTargets({ port: portDetect.port, host: portDetect.host });
+  const clientRuntime = await ensureDebugClientReady();
+  const portDetect = {
+    ok: Boolean(clientRuntime.devtoolsPort),
+    port: clientRuntime.devtoolsPort,
+    host: '127.0.0.1',
+    reason: clientRuntime.reason,
+    ...(clientRuntime.portDetect || {}),
+  };
+  let targetDiscover = clientRuntime.targetDiscover || {
+    ok: clientRuntime.ready,
+    targets: clientRuntime.matchedTargets || [],
+    allTargets: clientRuntime.allTargets || [],
+  };
+  if (!targetDiscover.targets?.length && clientRuntime.matchedTargets?.length) {
+    targetDiscover = { ok: true, targets: clientRuntime.matchedTargets, allTargets: clientRuntime.allTargets };
   }
 
   const service = new CdpBridgeService();
   let health = {};
   let bridgeReport = {};
   try {
-    if (cfg.enabled && portDetect.ok && targetDiscover.ok) {
+    if (cfg.enabled && clientRuntime.ready && targetDiscover.ok) {
       health = await service.start({ listenMs: Number(cfg.listenMs || 8000) });
       bridgeReport = service.getReport();
     } else {
@@ -107,6 +124,14 @@ async function main() {
 
   const report = {
     generatedAt: new Date().toISOString(),
+    clientRuntime: {
+      reusedExistingClient: clientRuntime.reusedExistingClient,
+      killedExistingClient: clientRuntime.killedExistingClient,
+      relaunchedClient: clientRuntime.relaunchedClient,
+      ready: clientRuntime.ready,
+      reason: clientRuntime.reason,
+      message: clientRuntime.message || '',
+    },
     config: {
       enabled: cfg.enabled,
       ports: cfg.ports,
@@ -133,7 +158,7 @@ async function main() {
   const paths = writeReports(report);
   bridgeLog('[BRIDGE_HEALTH]', `报告已写入 ${paths.txtPath}`);
   closeBridgeDb();
-  process.exit(portDetect.ok && targetDiscover.ok ? 0 : 1);
+  process.exit(clientRuntime.ready ? 0 : 1);
 }
 
 main().catch((err) => {

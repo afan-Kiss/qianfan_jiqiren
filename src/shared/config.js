@@ -2,6 +2,30 @@ const fs = require('fs');
 const path = require('path');
 const { resolveProjectRoot } = require('./app-root');
 
+const DEFAULT_CLIENT_RUNTIME = {
+  reuseExistingDebugClient: true,
+  autoLaunchWhenNotRunning: false,
+  restartWhenCdpUnavailable: false,
+  killExistingBeforeLaunch: false,
+  waitForDevtoolsMs: 15000,
+};
+
+const DEFAULT_HISTORY_SYNC = {
+  enabled: true,
+  runOnStartup: true,
+  defaultLookbackDays: 3,
+  firstRunLookbackDays: 7,
+  maxConversationsPerShop: 200,
+  maxMessagesPerConversation: 100,
+  preferApi: true,
+  enableDomFallback: true,
+  requestIntervalMs: 800,
+  saveApiCandidates: true,
+  debugResponse: false,
+  autoReplyAfterHistoryReady: false,
+  domSelectors: {},
+};
+
 const DEFAULT_CDP_BRIDGE = {
   enabled: true,
   ports: [9222, 9223, 9224],
@@ -81,6 +105,8 @@ function loadConfig() {
     ...raw,
     doudian: { ...DEFAULT_DOUDIAN, ...(raw.doudian || {}) },
     cdpBridge: { ...DEFAULT_CDP_BRIDGE, ...(raw.cdpBridge || {}) },
+    clientRuntime: { ...DEFAULT_CLIENT_RUNTIME, ...(raw.clientRuntime || {}) },
+    historySync: { ...DEFAULT_HISTORY_SYNC, ...(raw.historySync || {}) },
   };
   return cachedConfig;
 }
@@ -100,6 +126,14 @@ function getCdpBridgeConfig() {
   };
 }
 
+function getClientRuntimeConfig() {
+  return { ...DEFAULT_CLIENT_RUNTIME, ...(loadConfig().clientRuntime || {}) };
+}
+
+function getHistorySyncConfig() {
+  return { ...DEFAULT_HISTORY_SYNC, ...(loadConfig().historySync || {}) };
+}
+
 function reloadConfig() {
   cachedConfig = null;
   return loadConfig();
@@ -108,8 +142,12 @@ function reloadConfig() {
 module.exports = {
   DEFAULT_DOUDIAN,
   DEFAULT_CDP_BRIDGE,
+  DEFAULT_CLIENT_RUNTIME,
+  DEFAULT_HISTORY_SYNC,
   loadConfig,
   getDoudianConfig,
   getCdpBridgeConfig,
+  getClientRuntimeConfig,
+  getHistorySyncConfig,
   reloadConfig,
 };

@@ -70,5 +70,26 @@
     "autoReplyEnabled": false,
     "autoAftersaleEnabled": false,
     "listenMs": 8000
+  },
+  "clientRuntime": {
+    "reuseExistingDebugClient": true,
+    "autoLaunchWhenNotRunning": false,
+    "restartWhenCdpUnavailable": false,
+    "killExistingBeforeLaunch": false,
+    "waitForDevtoolsMs": 15000
+  },
+  "historySync": {
+    "enabled": true,
+    "runOnStartup": true,
+    "defaultLookbackDays": 3,
+    "firstRunLookbackDays": 7,
+    "maxConversationsPerShop": 200,
+    "maxMessagesPerConversation": 100,
+    "preferApi": true,
+    "enableDomFallback": true,
+    "requestIntervalMs": 800,
+    "saveApiCandidates": true,
+    "debugResponse": false,
+    "autoReplyAfterHistoryReady": false
   }
 }

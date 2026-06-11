@@ -1,7 +1,6 @@
 const { getCdpBridgeConfig } = require('../../shared/config');
 const { bridgeLog } = require('../../shared/bridge-log');
-const { detectDevToolsPort } = require('./cdp-port-detector');
-const { discoverTargets } = require('./cdp-target-manager');
+const { ensureDebugClientReady } = require('../runtime/ensure-debug-client-ready');
 const { CdpClient } = require('./cdp-client');
 const { injectHook } = require('./cdp-injector');
 const { attachNetworkObserver } = require('./cdp-network-observer');
@@ -122,25 +121,29 @@ class CdpBridgeService {
 
   async start(options = {}) {
     const listenMs = Number(options.listenMs || 15000);
-    const portDetect = await detectDevToolsPort();
-    this.state.devtoolsPortOk = portDetect.ok;
-    this.state.devtoolsPort = portDetect.port || 0;
-    this.db.setStatus('devtools_port_ok', String(portDetect.ok));
+    const clientReady = options.clientReady || (await ensureDebugClientReady(options));
+    this.state.clientRuntime = clientReady;
+    this.state.devtoolsPortOk = Boolean(clientReady.devtoolsPort);
+    this.state.devtoolsPort = clientReady.devtoolsPort || 0;
+    this.db.setStatus('devtools_port_ok', String(this.state.devtoolsPortOk));
 
-    if (!portDetect.ok) {
-      this.state.lastError = portDetect.reason || 'no_devtools_port';
-      this.db.insertError('cdp-port-detector', 'no devtools port', portDetect.reason);
+    if (!clientReady.ready) {
+      this.state.lastError = clientReady.reason || 'client_not_ready';
+      this.db.insertError('cdp-bridge-service', 'client not ready', clientReady.message || clientReady.reason);
       return buildBridgeHealth(this.state);
     }
 
-    const discovered = await discoverTargets({ port: portDetect.port, host: portDetect.host });
+    const discovered = {
+      ok: true,
+      targets: clientReady.matchedTargets || [],
+    };
     this.state.targets = discovered.targets;
     this.state.targetCount = discovered.targets.length;
     this.db.setStatus('target_count', String(discovered.targets.length));
 
-    if (!discovered.ok) {
-      this.state.lastError = discovered.reason || 'no_targets';
-      this.db.insertError('cdp-target-manager', 'no matching targets', discovered.reason);
+    if (!discovered.targets.length) {
+      this.state.lastError = 'no_matching_targets';
+      this.db.insertError('cdp-target-manager', 'no matching targets', 'no_targets');
       return buildBridgeHealth(this.state);
     }
 

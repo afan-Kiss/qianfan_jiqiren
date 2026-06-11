@@ -1,5 +1,8 @@
-const { getDoudianConfig } = require('../../shared/config');
+const { getDoudianConfig, getHistorySyncConfig } = require('../../shared/config');
 const { println } = require('../../shared/logger');
+const { ensureDebugClientReady } = require('../../services/runtime/ensure-debug-client-ready');
+const { HistorySyncManager } = require('../../services/history/history-sync-manager');
+const { CdpBridgeService } = require('../../services/cdp/cdp-bridge-service');
 const { probeCdpRoute } = require('./doudian-cdp-probe');
 const { detectDoudianProcesses } = require('./doudian-process-detector');
 const { findDoudianPages } = require('./doudian-page-finder');
@@ -31,6 +34,9 @@ class DoudianRuntime {
     this.processReport = null;
     this.statusListeners = new Set();
     this.reconnectTimer = null;
+    this.clientRuntime = null;
+    this.historySyncResult = null;
+    this.cdpBridgeService = null;
   }
 
   onStatus(listener) {
@@ -120,6 +126,29 @@ class DoudianRuntime {
       this.processReport = detectDoudianProcesses();
       this.emitStatus({ doudianClientFound: this.processReport.found });
 
+      this.clientRuntime = await ensureDebugClientReady();
+      this.emitStatus({
+        clientRuntimeReady: this.clientRuntime.ready,
+        reusedExistingClient: this.clientRuntime.reusedExistingClient,
+        killedExistingClient: this.clientRuntime.killedExistingClient,
+        relaunchedClient: this.clientRuntime.relaunchedClient,
+        devtoolsPort: this.clientRuntime.devtoolsPort || 0,
+      });
+
+      const historyCfg = getHistorySyncConfig();
+      if (historyCfg.enabled && historyCfg.runOnStartup) {
+        try {
+          const historyManager = new HistorySyncManager();
+          this.historySyncResult = await historyManager.runSync({ listenMs: 8000 });
+          this.emitStatus({
+            historySyncStatus: this.historySyncResult.status,
+            historyReady: this.historySyncResult.results?.insertedMessages > 0,
+          });
+        } catch (err) {
+          this.emitStatus({ historySyncStatus: 'failed', historyReady: false, lastError: String(err.message || err) });
+        }
+      }
+
       this.wsServer = getDoudianWsServer({ port: cfg.bridgePort });
       await this.wsServer.start();
       this.bindWsServerEvents();
@@ -127,6 +156,15 @@ class DoudianRuntime {
 
       const injectOutcome = await this.tryDualRouteInject();
       this.injectResult = injectOutcome;
+
+      if (this.clientRuntime?.ready) {
+        try {
+          this.cdpBridgeService = new CdpBridgeService();
+          await this.cdpBridgeService.start({ listenMs: 0 });
+        } catch (err) {
+          println(`CDP bridge 启动警告：${err.message || err}`);
+        }
+      }
 
       this.started = true;
       this.emitStatus({
@@ -306,6 +344,8 @@ class DoudianRuntime {
     this.orderContext?.stop();
 
     if (!options.soft) {
+      await this.cdpBridgeService?.stop();
+      this.cdpBridgeService = null;
       await this.wsServer?.stop();
       this.wsServer = null;
     }
