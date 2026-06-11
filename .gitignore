@@ -1,0 +1,9 @@
+node_modules/
+data/
+logs/
+config.json
+config.wxbot-new.json
+*.db
+*.db-shm
+*.db-wal
+.DS_Store

@@ -1,0 +1,74 @@
+{
+  "doudian": {
+    "enabled": false,
+    "bridgePort": 19527,
+    "autoInjectOnStart": false,
+    "installDir": "D:\\抖店工作台_bridge_test\\1.1.7-login.1",
+    "originalInstallDir": "D:\\抖店工作台\\1.1.7-login.1",
+    "enableAsarPatch": false,
+    "devtoolsPorts": [9222, 9223, 9333, 4723],
+    "devtoolsHost": "127.0.0.1",
+    "processNames": [
+      "抖店工作台.exe",
+      "抖店.exe",
+      "doudian.exe",
+      "DouDian.exe"
+    ],
+    "pageMatchRules": {
+      "urlIncludes": [
+        "jinritemai.com",
+        "doudian.com",
+        "fxg.jinritemai.com",
+        "im.jinritemai.com"
+      ],
+      "titleIncludes": [
+        "抖店",
+        "客服",
+        "工作台",
+        "消息"
+      ],
+      "servicePageHints": [
+        "im",
+        "customer",
+        "chat",
+        "message",
+        "cs"
+      ]
+    },
+    "selectors": {
+      "chatContainer": "[class*='chat'], [class*='message-list'], [class*='im-chat']",
+      "conversationList": "[class*='conversation'], [class*='session-list']",
+      "messageInput": "textarea, [contenteditable='true'], input[type='text']",
+      "sendButton": "button[class*='send'], [class*='send-btn']",
+      "aftersaleCard": "[class*='aftersale'], [class*='refund'], [class*='售后']",
+      "orderCard": "[class*='order-card'], [class*='order-info']"
+    },
+    "messageMergeWindowMs": 8000,
+    "dedupeWindowMs": 60000,
+    "sendTimeoutMs": 15000,
+    "heartbeatIntervalMs": 30000,
+    "heartbeatTimeoutMs": 90000,
+    "debugRawPayload": false,
+    "redactSensitiveFields": true,
+    "knownShops": [
+      { "shopId": "263636465", "shopName": "XY祥钰珠宝" },
+      { "shopId": "276595872", "shopName": "梵诗娅珠宝" }
+    ]
+  },
+  "cdpBridge": {
+    "enabled": true,
+    "ports": [9222, 9223, 9224],
+    "devtoolsHost": "127.0.0.1",
+    "autoDiscoverTargets": true,
+    "injectOnNewDocument": true,
+    "enableNetworkObserver": true,
+    "saveRawFrames": true,
+    "savePayloadMaxLength": 20000,
+    "debugPayload": false,
+    "allowedUrlKeywords": ["qianfan", "douyin", "jinritemai", "im", "doudian", "fxg"],
+    "blockedUrlKeywords": [],
+    "autoReplyEnabled": false,
+    "autoAftersaleEnabled": false,
+    "listenMs": 8000
+  }
+}
