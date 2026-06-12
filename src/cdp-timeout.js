@@ -65,6 +65,11 @@ async function cdpGetResponseBody(Network, requestId, timeoutMs = CDP_EVAL_DEFAU
   );
 }
 
+async function cdpNetworkSendWebSocketFrame(Network, params, timeoutMs = CDP_EVAL_DEFAULT_MS) {
+  if (!Network?.sendWebSocketFrame) throw new Error('Network.sendWebSocketFrame unavailable');
+  return withTimeout(Network.sendWebSocketFrame(params), timeoutMs, 'Network.sendWebSocketFrame');
+}
+
 module.exports = {
   withTimeout,
   safeCloseCdp,
@@ -74,5 +79,6 @@ module.exports = {
   cdpPageEnable,
   cdpAddScriptToEvaluateOnNewDocument,
   cdpGetResponseBody,
+  cdpNetworkSendWebSocketFrame,
   CDP_EVAL_DEFAULT_MS,
 };

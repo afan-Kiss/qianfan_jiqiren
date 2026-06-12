@@ -1,5 +1,5 @@
 const { createWorkerRuntime } = require('./worker-bootstrap');
-const { sendQianfanReplyRequest } = require('../adapters/legacy-qianfan-sender-adapter');
+const { sendQianfanReplyRequest, formatQianfanSendErrorMessage } = require('../adapters/legacy-qianfan-sender-adapter');
 const {
   startBuyerListener,
   stopBuyerListener,
@@ -27,7 +27,9 @@ runtime.onTopic('qianfan.send.execute', async (payload, meta) => {
       error: success
         ? undefined
         : {
-            message: result.error?.message || result.data?.reason || '千帆发送失败',
+            message: formatQianfanSendErrorMessage(
+              result.error?.message || result.data?.reason || '千帆发送失败',
+            ),
             code: result.error?.code || 'QIANFAN_SEND_FAILED',
           },
     },

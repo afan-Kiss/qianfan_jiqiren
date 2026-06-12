@@ -79,16 +79,6 @@ function formatTargetLabel(target) {
 }
 
 const NOTICE_DASH = '┈';
-const NOTICE_WIDTH = 20;
-
-function noticeDashedLine(label = '') {
-  const text = String(label || '').trim();
-  if (!text) return NOTICE_DASH.repeat(NOTICE_WIDTH);
-  const gap = Math.max(0, NOTICE_WIDTH - text.length - 2);
-  const left = Math.floor(gap / 2);
-  const right = gap - left;
-  return `${NOTICE_DASH.repeat(left)} ${text} ${NOTICE_DASH.repeat(right)}`;
-}
 
 function formatWechatNotice(replyId, merged) {
   const uniqueTexts = [];
@@ -101,27 +91,22 @@ function formatWechatNotice(replyId, merged) {
   }
 
   const body = [
-    noticeDashedLine(),
     `【千帆待回复 #${replyId}】`,
-    '',
-    `店铺  ${merged.shopTitle}`,
-    `买家  ${merged.buyerNick || '买家'}`,
-    `时间  ${formatTime(merged.createAt)}`,
-    '',
-    '消息',
+    `店铺：${merged.shopTitle}`,
+    `买家：${merged.buyerNick || '买家'}`,
+    `时间：${formatTime(merged.createAt)}`,
   ];
 
   if (uniqueTexts.length === 1) {
-    body.push(uniqueTexts[0]);
-  } else {
+    body.push(`消息：${uniqueTexts[0]}`);
+  } else if (uniqueTexts.length > 1) {
+    body.push('消息：');
     uniqueTexts.forEach((t, i) => body.push(`${i + 1}. ${t}`));
+  } else {
+    body.push('消息：（空）');
   }
 
-  body.push(
-    '',
-    noticeDashedLine('引用本消息回复'),
-    noticeDashedLine(),
-  );
+  body.push('', `${NOTICE_DASH} 引用本消息回复`);
 
   return body.join('\n');
 }

@@ -1,11 +1,22 @@
 const config = require('../wechat/wxbot-new-config');
 const { sendWxText } = require('../wechat-send-api');
-const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextFromBridge } = require('../qianfan-ws-bridge');
+const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextForSend } = require('../qianfan-ws-bridge');
 const { withTimeout } = require('../cdp-timeout');
 const { ok, fail } = require('./adapter-result');
 
-const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 35000;
+const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 55000;
 const isDistributed = () => process.env.QIANFAN_DISTRIBUTED_RUNTIME === '1';
+
+function formatQianfanSendErrorMessage(message) {
+  const reason = String(message || '');
+  if (/sendQianfanTextReply timeout/i.test(reason)) {
+    return '千帆发送流程超时，可能 WS 唤醒/ACK 卡住，请到千帆手动确认是否已发出';
+  }
+  if (/resolveReplyContextForSend timeout/i.test(reason)) {
+    return '千帆会话解析超时，请让买家再发一条消息或到千帆手动回复';
+  }
+  return reason;
+}
 
 function formatFailureReceipt({ replyId, pending, reason, text }) {
   if (!replyId) {
@@ -55,7 +66,15 @@ async function sendQianfanReplyRequest(request = {}) {
     }
 
     if (!pending.appCid || !receiverAppUids?.length) {
-      const resolved = resolveReplyContextFromBridge(pending.shopTitle, pending.buyerNick);
+      const resolved = await withTimeout(
+        resolveReplyContextForSend(
+          pending.shopTitle,
+          pending.buyerNick,
+          pending.appCid,
+        ),
+        12000,
+        'resolveReplyContextForSend',
+      );
       if (resolved) {
         pending = {
           ...pending,
@@ -65,6 +84,14 @@ async function sendQianfanReplyRequest(request = {}) {
         };
         receiverAppUids = receiverAppUids?.length ? receiverAppUids : resolved.receiverAppUids;
       }
+    }
+
+    if (!pending.appCid) {
+      const reason = '缺少买家会话 appCid，请让买家再发一条消息或到千帆手动回复';
+      if (!isDistributed()) {
+        await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
+      }
+      return fail(new Error(reason), 'MISSING_APPCID');
     }
 
     if (!receiverAppUids?.length) {
@@ -89,6 +116,7 @@ async function sendQianfanReplyRequest(request = {}) {
         appCid: pending.appCid,
         receiverAppUids,
         text: replyText,
+        buyerNick: pending.buyerNick,
       }),
       QIANFAN_SEND_TOTAL_TIMEOUT_MS,
       'sendQianfanTextReply',
@@ -114,18 +142,16 @@ async function sendQianfanReplyRequest(request = {}) {
       qianfanMsgId: ack.msgId,
     });
   } catch (err) {
-    let reason = String(err.message || err);
-    if (/sendQianfanTextReply timeout/i.test(reason)) {
-      reason = '千帆发送流程超时，可能 ACK/UI 同步/回显卡住，请到千帆手动确认';
-    }
+    const reason = formatQianfanSendErrorMessage(err.message || err);
     if (!isDistributed()) {
       await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
     }
-    return fail(err, 'QIANFAN_SEND_FAILED', { reason });
+    return fail(new Error(reason), 'QIANFAN_SEND_FAILED', { reason });
   }
 }
 
 module.exports = {
   sendQianfanReplyRequest,
   sendFailureReceipt,
+  formatQianfanSendErrorMessage,
 };

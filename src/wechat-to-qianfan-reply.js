@@ -27,7 +27,7 @@ const {
 const { sendQianfanTextReply, findBridgeByShopTitle } = require('./qianfan-ws-bridge');
 const { withTimeout } = require('./cdp-timeout');
 
-const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 35000;
+const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 55000;
 
 function debugLogPath() {
   const d = new Date();

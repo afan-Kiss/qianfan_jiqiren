@@ -389,6 +389,25 @@ function parseNoticeContextFromText(text) {
   };
 }
 
+function normalizeBuyerNickForMatch(nick) {
+  return String(nick || '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u2600-\u27BF]/gu, '')
+    .replace(/[^\p{L}\p{N}]/gu, '')
+    .toLowerCase();
+}
+
+function buyerNickMatches(a, b) {
+  const left = String(a || '').trim();
+  const right = String(b || '').trim();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const na = normalizeBuyerNickForMatch(left);
+  const nb = normalizeBuyerNickForMatch(right);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  return na.includes(nb) || nb.includes(na);
+}
+
 function findSessionContextForBuyer(shopTitle, buyerNick = '') {
   const shopKey = normalizeShopKey(shopTitle);
   const nick = String(buyerNick || '').trim();
@@ -397,12 +416,58 @@ function findSessionContextForBuyer(shopTitle, buyerNick = '') {
   for (const ctx of Object.values(all)) {
     if (!ctx || typeof ctx !== 'object') continue;
     if (normalizeShopKey(ctx.shopTitle) !== shopKey) continue;
-    if (nick && String(ctx.buyerNick || '').trim() && String(ctx.buyerNick || '').trim() !== nick) continue;
+    if (nick && String(ctx.buyerNick || '').trim() && !buyerNickMatches(ctx.buyerNick, nick)) continue;
     matches.push(ctx);
   }
   if (!matches.length) return null;
   matches.sort((a, b) => Number(b.updatedAt || b.lastBuyerMsgAt || 0) - Number(a.updatedAt || a.lastBuyerMsgAt || 0));
   return matches[0];
+}
+
+function findReceiverCacheForShop(shopTitle, buyerNick = '') {
+  const shopKey = normalizeShopKey(shopTitle);
+  const nick = String(buyerNick || '').trim();
+  const cache = readJson(APP_CID_RECEIVERS_FILE, {});
+  const all = readJson(SESSION_CONTEXT_FILE, {});
+  let fallback = null;
+
+  for (const [key, uids] of Object.entries(cache)) {
+    if (!Array.isArray(uids) || !uids.length) continue;
+    if (!key.startsWith(`${shopKey}::`)) continue;
+    const appCid = key.slice(shopKey.length + 2);
+    if (!appCid) continue;
+    const ctx = all[key] || getSessionContext(shopKey, appCid);
+    if (nick && ctx?.buyerNick && !buyerNickMatches(ctx.buyerNick, nick)) continue;
+    const hit = {
+      shopTitle: shopKey,
+      appCid,
+      buyerNick: String(ctx?.buyerNick || nick || '买家').trim(),
+      receiverAppUids: [...uids],
+    };
+    if (nick && ctx?.buyerNick && buyerNickMatches(ctx.buyerNick, nick)) return hit;
+    if (!fallback) fallback = hit;
+  }
+
+  if (!fallback && nick) {
+    for (const ctx of Object.values(all)) {
+      if (!ctx || typeof ctx !== 'object') continue;
+      if (normalizeShopKey(ctx.shopTitle) !== shopKey) continue;
+      if (!buyerNickMatches(ctx.buyerNick, nick)) continue;
+      const appCid = String(ctx.appCid || '').trim();
+      const receiverAppUids = Array.isArray(ctx.receiverAppUids) && ctx.receiverAppUids.length
+        ? ctx.receiverAppUids.filter(Boolean)
+        : getReceiverAppUids(shopKey, appCid);
+      if (!appCid || !receiverAppUids.length) continue;
+      return {
+        shopTitle: shopKey,
+        appCid,
+        buyerNick: String(ctx.buyerNick || nick).trim(),
+        receiverAppUids,
+      };
+    }
+  }
+
+  return fallback;
 }
 
 function reconstructPendingFromReplyId(replyId, options = {}) {
@@ -452,6 +517,15 @@ function reconstructPendingFromReplyId(replyId, options = {}) {
   let receiverAppUids = Array.isArray(ctx?.receiverAppUids) ? ctx.receiverAppUids.filter(Boolean) : [];
   if (!receiverAppUids.length && shopTitle && appCid) {
     receiverAppUids = getReceiverAppUids(shopTitle, appCid);
+  }
+
+  if (!receiverAppUids.length && shopTitle) {
+    const cached = findReceiverCacheForShop(shopTitle, buyerNick);
+    if (cached?.receiverAppUids?.length) {
+      appCid = appCid || cached.appCid;
+      buyerNick = buyerNick || cached.buyerNick;
+      receiverAppUids = cached.receiverAppUids;
+    }
   }
 
   const pending = {
@@ -819,7 +893,10 @@ module.exports = {
   lookupSentNotificationForQuote,
   lookupSentNotificationByReplyId,
   findSessionContextForBuyer,
+  findReceiverCacheForShop,
+  buyerNickMatches,
   parseNoticeContextFromText,
+  extractReceiverAppUidsFromMessage,
   reconstructPendingFromReplyId,
   resolvePendingReply,
   findPendingByReplyId,
@@ -830,7 +907,6 @@ module.exports = {
   saveSessionContext,
   getSessionContext,
   getActiveSessionAppCids,
-  extractReceiverAppUidsFromMessage,
   normalizeShopKey,
   sessionContextKey,
   appendSentReply,
