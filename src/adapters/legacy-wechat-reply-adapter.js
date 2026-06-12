@@ -86,7 +86,7 @@ async function parseWechatReplyEvent({ parsed, body }) {
       ? pending.receiverAppUids.filter(Boolean)
       : [];
     if (!receiverAppUids.length) {
-      receiverAppUids = dataStore.getReceiverAppUids(pending.appCid);
+      receiverAppUids = dataStore.getReceiverAppUids(pending.shopTitle, pending.appCid);
     }
 
     return ok({

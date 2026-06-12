@@ -135,7 +135,7 @@ function extractRawText(data, root) {
     if (title) return title;
     const plain = extractQuoteFromXml(xml).quoteText;
     if (plain && !plain.includes('【千帆待回复')) {
-      // skip quoted notification body as reply text
+      return plain;
     }
   }
 

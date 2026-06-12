@@ -663,6 +663,7 @@ async function verifyViaHttpMessageList(bridge, { appCid, msgId, text, sentAfter
       return { verified: true, reason: 'http_msgId_match', msgId: msg.msgId };
     }
     if (text && String(msg.text || '').trim() === String(text).trim() && msg.isSellerSide !== false) {
+      if (sentAfterMs && (!createAt || createAt < sentAfterMs - 500)) continue;
       const sender = String(msg.senderType || '').toUpperCase();
       if (sender && sender !== 'CUSTOMER') {
         return { verified: true, reason: 'http_text_match', msgId: msg.msgId };

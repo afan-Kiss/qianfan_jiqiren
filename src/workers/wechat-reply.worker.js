@@ -224,6 +224,27 @@ runtime.onTopic('wechat.reply.received', async (payload, meta) => {
 
   if (!dedupResult.ok) {
     runtime.log('error', `wechat reply dedup check failed replyId=${reply.replyId}`, { traceId });
+    await runtime.persist(
+      'deadLetter.record',
+      {
+        traceId,
+        topic: 'wechat.reply.received',
+        workerName: 'wechat-reply',
+        reason: dedupResult.error?.message || 'wechat_reply_dedup_failed',
+        payload: { reply, parsed, body },
+        error: dedupResult.error,
+      },
+      { idempotencyKey: `dead-letter:dedup:${reply.replyId}:${reply.wxMsgId}`, traceId },
+    );
+    await sendFailureReceiptWithDedup({
+      replyId: reply.replyId,
+      pending,
+      reason: '系统繁忙，请稍后重试',
+      text: reply.text,
+      fromWxid: reply.fromWxid,
+      traceId,
+      errorCodeOrType: 'DEDUP_PERSIST_FAILED',
+    });
     return;
   }
 
@@ -275,16 +296,20 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
   );
 
   if (payload.skipped) {
-    if (payload.success) {
-      const request = payload.request || {};
+    const request = payload.request || {};
+    const reason = String(payload.reason || '');
+    if (reason === 'send_in_flight') {
       runtime.userLog(
-        formatReplySuccessMessage({
+        formatReplyFailureMessage({
           replyId: payload.replyId || request.replyId,
           fromWxid: request.fromWxid || payload.fromWxid,
           pending: request.pending,
-          replyText: request.replyText || request.text,
+          reason: '上一条回复仍在发送中，请稍候再试',
         }),
-        { dedupKey: `send-ok-dup:${payload.replyId || traceId}` },
+        {
+          dedupKey: `send-in-flight:${payload.replyId || request.replyId || traceId}`,
+          level: 'warn',
+        },
       );
     }
     return;

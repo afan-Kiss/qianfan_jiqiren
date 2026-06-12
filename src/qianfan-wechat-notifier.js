@@ -292,7 +292,6 @@ async function flushMergeBucket(bucketKey) {
   async function savePending(record) {
     if (hooks?.appendPending) {
       await hooks.appendPending(record);
-      if (process.env.QIANFAN_SIM_MODE === '1') appendPending(record);
       return;
     }
     appendPending(record);

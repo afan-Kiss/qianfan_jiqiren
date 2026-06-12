@@ -246,10 +246,8 @@ async function executeAction(action, data = {}) {
         const inFlight =
           existing?.status === 'claimed'
           && Date.now() - Number(existing.at || 0) < BUYER_NOTIFY_CLAIM_TTL_MS;
-        const duplicate = existing?.status === 'notified'
-          || existing?.status === 'partial'
-          || inFlight;
-        return ok({ duplicate, notifyKey: key, inFlight: Boolean(inFlight) });
+        const duplicate = existing?.status === 'notified' || inFlight;
+        return ok({ duplicate, notifyKey: key, inFlight: Boolean(inFlight), resumed: existing?.status === 'partial' });
       }
       return ok(claimBuyerMessageNotify(message));
     }
@@ -295,11 +293,22 @@ async function executeAction(action, data = {}) {
         : '';
       const map = loadWechatReplyDedupMap();
       if (contentKey && map[contentKey]) {
-        return ok({ duplicate: true, source: 'persisted-content' });
+        const age = Date.now() - Number(map[contentKey].at || 0);
+        if (age <= QIANFAN_SEND_PENDING_STALE_MS) {
+          return ok({ duplicate: true, source: 'persisted-content' });
+        }
       }
-      if (wxId && map[wxId]) return ok({ duplicate: true, source: 'persisted' });
+      if (wxId && map[wxId]) {
+        const age = Date.now() - Number(map[wxId].at || 0);
+        if (age <= QIANFAN_SEND_PENDING_STALE_MS) {
+          return ok({ duplicate: true, source: 'persisted' });
+        }
+      }
       if (wxId && replyId && map[`${wxId}::${replyId}`]) {
-        return ok({ duplicate: true, source: 'persisted' });
+        const age = Date.now() - Number(map[`${wxId}::${replyId}`].at || 0);
+        if (age <= QIANFAN_SEND_PENDING_STALE_MS) {
+          return ok({ duplicate: true, source: 'persisted' });
+        }
       }
       const duplicate = checkWechatReplyDuplicate({
         wechatReplyMsgId: wxId,

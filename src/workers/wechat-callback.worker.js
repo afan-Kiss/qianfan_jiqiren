@@ -8,6 +8,7 @@ const {
 const runtime = createWorkerRuntime({ workerName: 'wechat-callback' });
 const RETRY_MS = Number(process.env.WECHAT_CALLBACK_RETRY_MS || 15000);
 let retryTimer = null;
+let cleanupRegistered = false;
 
 function reportStatus(patch = {}) {
   runtime.reportStatus({
@@ -73,17 +74,20 @@ async function boot() {
   }
 
   reportStatus({ phase: 'running', businessReady: true, lastError: '' });
-  runtime.registerCleanup(async (reason) => {
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
-    }
-    await stopCallbackServer();
-    if (reason === 'app-quit') {
-      const { stopWxbotRuntime } = require('../adapters/legacy-wechat-callback-adapter');
-      stopWxbotRuntime();
-    }
-  });
+  if (!cleanupRegistered) {
+    cleanupRegistered = true;
+    runtime.registerCleanup(async (reason) => {
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      await stopCallbackServer();
+      if (reason === 'app-quit') {
+        const { stopWxbotRuntime } = require('../adapters/legacy-wechat-callback-adapter');
+        stopWxbotRuntime();
+      }
+    });
+  }
 }
 
 boot().catch((err) => {

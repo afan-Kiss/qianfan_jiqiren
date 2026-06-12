@@ -175,7 +175,7 @@ function extractDedupMsgId(message) {
 }
 
 function buildCanonicalBuyerMessageKey(message) {
-  const shopTitle = String(message?.shopTitle || '').trim();
+  const shopTitle = normalizeShopKey(message?.shopTitle);
   const appCid = String(message?.appCid || '').trim();
   const stableMsgId = extractDedupMsgId(message);
   const contentType = String(message?.contentType || 'text').trim();
@@ -229,7 +229,7 @@ function buildNotifyKey(message) {
 function hasNotified(message, notifiedSet) {
   if (notifiedSet.has(buildNotifyKey(message))) return true;
   const msgId = extractDedupMsgId(message);
-  const shopTitle = String(message?.shopTitle || '').trim();
+  const shopTitle = normalizeShopKey(message?.shopTitle);
   const appCid = String(message?.appCid || '').trim();
   if (msgId && shopTitle && appCid) {
     const idKey = `${shopTitle}::${appCid}::id::${msgId}`;
@@ -263,8 +263,12 @@ function markNotified(message, notifiedSet) {
 
 function appendPending(record) {
   const list = trimPendingList(readJson(PENDING_FILE, []));
-  const replyId = Number(record?.replyId);
-  const buyerMsgId = String(record?.buyerMsgId || '').trim();
+  const normalized = {
+    ...record,
+    shopTitle: normalizeShopKey(record?.shopTitle) || String(record?.shopTitle || '').trim(),
+  };
+  const replyId = Number(normalized?.replyId);
+  const buyerMsgId = String(normalized?.buyerMsgId || '').trim();
   let idx = -1;
   if (Number.isFinite(replyId) && buyerMsgId) {
     idx = list.findIndex(
@@ -280,8 +284,8 @@ function appendPending(record) {
   }
   const next = {
     replyCount: 0,
-    ...record,
-    status: record.status || 'notified',
+    ...normalized,
+    status: normalized.status || 'notified',
   };
   if (idx >= 0) {
     list[idx] = { ...list[idx], ...next, replyCount: list[idx].replyCount || 0 };
@@ -500,19 +504,19 @@ function findPendingByReplyId(replyId) {
 }
 
 function findOpenPendingForBuyer(message = {}) {
-  const buyerMsgId = String(message.msgId || message.messageId || '').trim();
-  const shopTitle = String(message.shopTitle || '').trim();
+  const shopKey = normalizeShopKey(message.shopTitle);
   const appCid = String(message.appCid || '').trim();
-  if (!shopTitle || !appCid) return null;
+  const buyerNick = String(message.buyerNick || '').trim();
+  if (!shopKey || !appCid) return null;
 
   const list = readJson(PENDING_FILE, []);
   for (let i = list.length - 1; i >= 0; i -= 1) {
     const row = list[i];
-    if (String(row.shopTitle || '').trim() !== shopTitle) continue;
+    if (normalizeShopKey(row.shopTitle) !== shopKey) continue;
     if (String(row.appCid || '').trim() !== appCid) continue;
-    if (buyerMsgId && String(row.buyerMsgId || '').trim() !== buyerMsgId) continue;
     const status = String(row.status || '');
     if (!['notify_partial', 'notifying', 'notify_failed'].includes(status)) continue;
+    if (buyerNick && row.buyerNick && !buyerNickMatches(row.buyerNick, buyerNick)) continue;
     return { ...row };
   }
   return null;

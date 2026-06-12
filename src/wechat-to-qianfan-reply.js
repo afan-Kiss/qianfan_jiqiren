@@ -162,7 +162,7 @@ function createWechatToQianfanDispatcher() {
       ? pending.receiverAppUids.filter(Boolean)
       : [];
     if (!receiverAppUids.length) {
-      receiverAppUids = getReceiverAppUids(pending.appCid);
+      receiverAppUids = getReceiverAppUids(pending.shopTitle, pending.appCid);
     }
     if (!receiverAppUids.length) {
       const receipt = formatFailureReceipt({
