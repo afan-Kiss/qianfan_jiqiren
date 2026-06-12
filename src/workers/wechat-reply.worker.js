@@ -180,9 +180,6 @@ runtime.onTopic('wechat.reply.received', async (payload, meta) => {
   const reply = data.reply;
 
   const pending = await loadPendingReply(reply, traceId);
-  if (pending?.recreated) {
-    runtime.log('info', `pending reply #${reply.replyId} restored from notification context`, { traceId });
-  }
   if (!pending) {
     runtime.log('error', `pending reply not found replyId=${reply.replyId}`, { traceId });
     await runtime.persist(

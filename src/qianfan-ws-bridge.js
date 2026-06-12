@@ -810,35 +810,35 @@ function hasRecentImpaasSession(bridge) {
   if (bridge.lastWsFrameAt && now - bridge.lastWsFrameAt <= IMPAAS_SESSION_FRESH_MS) {
     return true;
   }
-  if (bridge.lastMessageListRequest?.url) {
-    return true;
-  }
   for (const sess of bridge?.wsSessions?.values() || []) {
     if (!sess?.requestId) continue;
     if (sess.lastActivityAt && now - sess.lastActivityAt <= IMPAAS_SESSION_FRESH_MS) {
       return true;
     }
-    if (sess.seenImpaasTraffic || sess.seenBuyerSync || sess.seenMessageSend) {
-      return true;
-    }
   }
-  return bridge.wsUrls?.size > 0;
+  return false;
 }
 
 function listSendCandidateSessions(bridge, appCid) {
+  const now = Date.now();
   const ranked = new Map();
-  const add = (sess) => {
+  const add = (sess, freshOnly = false) => {
     const requestId = String(sess?.requestId || '').trim();
     if (!requestId || ranked.has(requestId)) return;
+    const lastActivityAt = Number(sess?.lastActivityAt || 0);
+    const fresh = lastActivityAt && now - lastActivityAt <= IMPAAS_SESSION_FRESH_MS;
+    if (freshOnly && !fresh) return;
     ranked.set(requestId, {
       ...sess,
       requestId,
       url: sess.url || bridge.wsUrls.get(requestId) || '',
+      lastActivityAt,
+      _fresh: fresh,
     });
   };
 
-  add(pickSendSession(bridge, appCid));
-  for (const sess of bridge?.wsSessions?.values() || []) add(sess);
+  add(pickSendSession(bridge, appCid), false);
+  for (const sess of bridge?.wsSessions?.values() || []) add(sess, true);
   for (const [requestId, url] of bridge?.wsUrls?.entries() || []) {
     add({
       requestId,
@@ -849,11 +849,13 @@ function listSendCandidateSessions(bridge, appCid) {
       seenMessageSend: false,
       lastActivityAt: 0,
       lastSeq: 0,
-    });
+    }, false);
   }
 
   return [...ranked.values()].sort(
-    (a, b) => scoreSendSession(b, appCid) - scoreSendSession(a, appCid)
+    (a, b) =>
+      Number(b._fresh) - Number(a._fresh) ||
+      scoreSendSession(b, appCid) - scoreSendSession(a, appCid)
   );
 }
 
@@ -865,26 +867,13 @@ async function prepareShopSendBridge(bridge, shopTitle, appCid) {
   if (!isBridgeCdpReady(bridge)) {
     throw new Error(`店铺「${shopLabel}」CDP 连接不可用，请确认千帆工作台页面未关闭`);
   }
-
   noteBuyerAppCidOnBridge(shopTitle, appCid);
-
-  if (!hasRecentImpaasSession(bridge)) {
-    await installWsHook(bridge.client);
-    if (appCid && bridge.lastMessageListRequest) {
-      await fetchMessageListForAppCid(bridge, appCid);
-    }
-    await ensureImpaasWsReady(bridge, appCid);
-    bridge = findBridgeByShopTitle(shopTitle) || bridge;
-  }
-
-  return bridge;
+  return findBridgeByShopTitle(shopTitle) || bridge;
 }
 
 async function hasLiveImpaasWs(bridge) {
   if (!isBridgeCdpReady(bridge)) return false;
-  const probed = await probePageImpaasWs(bridge);
-  if (probed.ok) return true;
-  return hasRecentImpaasSession(bridge);
+  return (await probePageImpaasWs(bridge)).ok;
 }
 
 function hasShopImpaasWs(bridge) {
@@ -956,9 +945,7 @@ async function triggerShopReconnect(shopTitle, reason = 'send_no_ws') {
 async function ensureImpaasWsReady(bridge, appCid, options = {}) {
   if (!bridge) return false;
 
-  if (hasRecentImpaasSession(bridge)) {
-    return true;
-  }
+  if ((await probePageImpaasWs(bridge)).ok) return true;
 
   const shopLabel = normalizeShopKey(bridge.shopTitle);
   const rounds = options.aggressive ? IMPAAS_SEND_RETRY_ROUNDS : 2;
@@ -1181,14 +1168,6 @@ async function sendPayloadToImpaas(bridge, shopTitle, payloadStr, appCid) {
   const maxRounds = IMPAAS_SEND_RETRY_ROUNDS;
 
   for (let round = 0; round < maxRounds; round += 1) {
-    if (round > 0) {
-      await installWsHook(currentBridge.client);
-      if (appCid && currentBridge.lastMessageListRequest) {
-        await fetchMessageListForAppCid(currentBridge, appCid);
-      }
-      await ensureImpaasWsReady(currentBridge, appCid, { aggressive: round + 1 >= maxRounds });
-    }
-
     if (!isBridgeCdpReady(currentBridge)) {
       currentBridge = await waitForBridgeCdpReady(shopTitle, IMPAAS_RECONNECT_WAIT_MS) || currentBridge;
     }
@@ -1201,7 +1180,24 @@ async function sendPayloadToImpaas(bridge, shopTitle, payloadStr, appCid) {
       continue;
     }
 
+    await installWsHook(currentBridge.client);
     noteBuyerAppCidOnBridge(currentBridge.shopTitle, appCid);
+    if (appCid && currentBridge.lastMessageListRequest) {
+      await fetchMessageListForAppCid(currentBridge, appCid);
+    }
+
+    let probed = await probePageImpaasWs(currentBridge);
+    if (!probed.ok) {
+      await ensureImpaasWsReady(currentBridge, appCid, { aggressive: round + 1 >= maxRounds });
+      currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
+      await installWsHook(currentBridge.client);
+      probed = await probePageImpaasWs(currentBridge);
+    }
+
+    if (probed.ok) {
+      const pageSent = await sendViaPageRuntime(currentBridge.client, payloadStr, appCid);
+      if (pageSent.ok) return pageSent;
+    }
 
     const cdpSent = await sendViaCdpNetwork(currentBridge, payloadStr, appCid);
     if (cdpSent.ok) return cdpSent;
@@ -1209,7 +1205,6 @@ async function sendPayloadToImpaas(bridge, shopTitle, payloadStr, appCid) {
     const sent = await sendViaPageRuntime(currentBridge.client, payloadStr, appCid);
     if (sent.ok) return sent;
 
-    const probed = await probePageImpaasWs(currentBridge);
     const candidates = listSendCandidateSessions(currentBridge, appCid);
     println(
       `[千帆发送] ${normalizeShopKey(shopTitle)} 发送失败 round=${round + 1} reason=${sent.reason || cdpSent.reason || 'no_ws'} openWs=${probed.count}/${probed.total} cdpSessions=${candidates.length}`
@@ -1217,7 +1212,7 @@ async function sendPayloadToImpaas(bridge, shopTitle, payloadStr, appCid) {
 
     if (round + 1 < maxRounds) {
       await triggerShopReconnect(currentBridge.shopTitle, 'send_no_ws');
-      await new Promise((r) => setTimeout(r, IMPAAS_WAKE_WAIT_MS));
+      await new Promise((r) => setTimeout(r, IMPAAS_RECONNECT_WAIT_MS));
       currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
     }
   }
@@ -1346,8 +1341,8 @@ async function registerQianfanWsBridge(pageInfo, client) {
     frameListeners: prev?.frameListeners || new Set(),
     buyerMessageHandlers: prev?.buyerMessageHandlers || new Set(),
     httpTemplates: prev?.httpTemplates || new Map(),
-    wsSessions: prev?.wsSessions ? new Map(prev.wsSessions) : new Map(),
-    wsUrls: prev?.wsUrls ? new Map(prev.wsUrls) : new Map(),
+    wsSessions: new Map(),
+    wsUrls: new Map(),
     lastManualSendByAppCid: prev?.lastManualSendByAppCid || new Map(),
     lastManualSendAny: prev?.lastManualSendAny || null,
     lastMessageListRequest: prev?.lastMessageListRequest || null,
@@ -1760,36 +1755,10 @@ async function resolveReplyContextForSend(shopTitle, buyerNick = '', appCidHint 
   const shopKey = normalizeShopKey(shopTitle);
   const nick = String(buyerNick || '').trim();
   const hintedAppCid = String(appCidHint || '').trim();
-
   const bridge = findBridgeByShopTitle(shopTitle);
-
-  if (bridge && nick) {
-    const batch = await fetchMessageListRaw(bridge);
-    if (batch.ok) {
-      const messages = extractMessagesFromResponse(batch.body, shopKey, 'http_message_list');
-      const picked = pickBuyerMessageForNick(messages, nick);
-      const fromMessage = buildReplyContextFromMessage(shopKey, picked);
-      if (fromMessage) {
-        rememberReceiverAppUids(shopKey, fromMessage.appCid, fromMessage.receiverAppUids);
-        saveSessionContext({
-          shopTitle: shopKey,
-          appCid: fromMessage.appCid,
-          buyerNick: fromMessage.buyerNick,
-          senderAppUid: fromMessage.receiverAppUids[0],
-          receiverAppUids: fromMessage.receiverAppUids,
-          createAt: Date.now(),
-        });
-        return fromMessage;
-      }
-    }
-  }
-
-  let hit = resolveReplyContextFromBridge(shopTitle, buyerNick);
-  if (hit?.receiverAppUids?.length) return hit;
-
   if (!bridge) return null;
 
-  if (!nick) {
+  if (nick) {
     const batch = await fetchMessageListRaw(bridge);
     if (batch.ok) {
       const messages = extractMessagesFromResponse(batch.body, shopKey, 'http_message_list');
@@ -1810,36 +1779,41 @@ async function resolveReplyContextForSend(shopTitle, buyerNick = '', appCidHint 
     }
   }
 
-  const cids = hintedAppCid
-    ? [hintedAppCid]
-    : [...new Set(getBridgeActiveAppCids(bridge))];
-  for (const appCid of cids) {
-    const cachedUids = getReceiverAppUids(shopKey, appCid);
-    if (cachedUids.length) {
-      return {
-        shopTitle: shopKey,
-        appCid,
-        buyerNick: nick || '买家',
-        receiverAppUids: cachedUids,
-      };
+  if (hintedAppCid) {
+    const fetched = await fetchMessageListForAppCid(bridge, hintedAppCid);
+    if (fetched.ok) {
+      const messages = extractMessagesFromResponse(fetched.body, shopKey);
+      const picked = pickBuyerMessageForNick(messages, nick);
+      const fromMessage = buildReplyContextFromMessage(shopKey, picked);
+      if (fromMessage) {
+        rememberReceiverAppUids(shopKey, fromMessage.appCid, fromMessage.receiverAppUids);
+        saveSessionContext({
+          shopTitle: shopKey,
+          appCid: fromMessage.appCid,
+          buyerNick: fromMessage.buyerNick,
+          senderAppUid: fromMessage.receiverAppUids[0],
+          receiverAppUids: fromMessage.receiverAppUids,
+          createAt: Date.now(),
+        });
+        return fromMessage;
+      }
     }
-    const fetched = await fetchMessageListForAppCid(bridge, appCid);
-    if (!fetched.ok) continue;
-    const messages = extractMessagesFromResponse(fetched.body, shopKey);
-    const picked = pickBuyerMessageForNick(messages, nick);
-    const fromMessage = buildReplyContextFromMessage(shopKey, picked);
-    if (fromMessage) {
-      rememberReceiverAppUids(shopKey, fromMessage.appCid, fromMessage.receiverAppUids);
-      saveSessionContext({
-        shopTitle: shopKey,
-        appCid: fromMessage.appCid,
-        buyerNick: fromMessage.buyerNick,
-        senderAppUid: fromMessage.receiverAppUids[0],
-        receiverAppUids: fromMessage.receiverAppUids,
-        createAt: Date.now(),
-      });
-      return fromMessage;
-    }
+  }
+
+  for (const appCid of getBridgeActiveAppCids(bridge)) {
+    const ctx = getSessionContext(shopKey, appCid);
+    if (!ctx) continue;
+    if (nick && ctx.buyerNick && !buyerNickMatches(ctx.buyerNick, nick)) continue;
+    const receiverAppUids = ctx.receiverAppUids?.length
+      ? [...ctx.receiverAppUids]
+      : getReceiverAppUids(shopKey, appCid);
+    if (!receiverAppUids.length) continue;
+    return {
+      shopTitle: shopKey,
+      appCid,
+      buyerNick: String(ctx.buyerNick || nick || '买家').trim(),
+      receiverAppUids,
+    };
   }
 
   return null;

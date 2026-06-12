@@ -470,87 +470,8 @@ function findReceiverCacheForShop(shopTitle, buyerNick = '') {
   return fallback;
 }
 
-function reconstructPendingFromReplyId(replyId, options = {}) {
-  const num = Number(String(replyId || '').replace(/^#/, ''));
-  if (!Number.isFinite(num)) return null;
-
-  const existing = findPendingByReplyId(num);
-  if (existing) return existing;
-
-  const fromWxid = String(options.fromWxid || '').trim();
-  const quotedWxMsgId = String(options.quotedWxMsgId || options.wxMsgId || '').trim();
-  const quoteText = String(options.quoteText || '').trim();
-  const quoteCtx = quoteText ? parseNoticeContextFromText(quoteText) : {};
-
-  let mapEntry = quotedWxMsgId ? lookupSentNotificationForQuote(quotedWxMsgId, fromWxid) : null;
-  if (!mapEntry) mapEntry = lookupSentNotificationByReplyId(num, fromWxid);
-  if (!mapEntry && quoteCtx.shopTitle) {
-    mapEntry = {
-      replyId: num,
-      shopTitle: quoteCtx.shopTitle,
-      buyerNick: quoteCtx.buyerNick,
-      appCid: '',
-      sentAt: Date.now(),
-      targetWxid: fromWxid,
-    };
-  }
-  if (!mapEntry) return null;
-
-  let shopTitle = String(mapEntry.shopTitle || quoteCtx.shopTitle || '').trim();
-  let buyerNick = String(mapEntry.buyerNick || quoteCtx.buyerNick || '').trim();
-  let appCid = String(mapEntry.appCid || '').trim();
-  let ctx = shopTitle && appCid ? getSessionContext(shopTitle, appCid) : null;
-  if (!ctx && shopTitle) {
-    ctx = findSessionContextForBuyer(shopTitle, buyerNick || mapEntry.buyerNick);
-    if (ctx?.appCid) appCid = String(ctx.appCid).trim();
-    if (ctx?.buyerNick) buyerNick = buyerNick || String(ctx.buyerNick).trim();
-  }
-
-  if (!appCid && shopTitle) {
-    const cids = getActiveSessionAppCids(shopTitle);
-    if (cids.length === 1) {
-      appCid = cids[0];
-      ctx = getSessionContext(shopTitle, appCid) || ctx;
-    }
-  }
-
-  let receiverAppUids = Array.isArray(ctx?.receiverAppUids) ? ctx.receiverAppUids.filter(Boolean) : [];
-  if (!receiverAppUids.length && shopTitle && appCid) {
-    receiverAppUids = getReceiverAppUids(shopTitle, appCid);
-  }
-
-  if (!receiverAppUids.length && shopTitle) {
-    const cached = findReceiverCacheForShop(shopTitle, buyerNick);
-    if (cached?.receiverAppUids?.length) {
-      appCid = appCid || cached.appCid;
-      buyerNick = buyerNick || cached.buyerNick;
-      receiverAppUids = cached.receiverAppUids;
-    }
-  }
-
-  const pending = {
-    replyId: num,
-    shopTitle,
-    appCid,
-    buyerNick: buyerNick || String(ctx?.buyerNick || mapEntry.buyerNick || '买家').trim(),
-    buyerMsgId: String(ctx?.buyerMsgId || '').trim(),
-    receiverAppUids,
-    status: 'notified',
-    recreated: true,
-    createdAt: Number(mapEntry.sentAt || ctx?.lastBuyerMsgAt || Date.now()),
-  };
-
-  if (!pending.shopTitle) return null;
-
-  appendPending(pending);
-  return pending;
-}
-
 function resolvePendingReply(options = {}) {
-  const replyId = options.replyId;
-  const pending = findPendingByReplyId(replyId);
-  if (pending) return pending;
-  return reconstructPendingFromReplyId(replyId, options);
+  return findPendingByReplyId(options.replyId);
 }
 
 function findPendingByReplyId(replyId) {
@@ -897,7 +818,6 @@ module.exports = {
   buyerNickMatches,
   parseNoticeContextFromText,
   extractReceiverAppUidsFromMessage,
-  reconstructPendingFromReplyId,
   resolvePendingReply,
   findPendingByReplyId,
   findOpenPendingForBuyer,

@@ -3,6 +3,7 @@ const { sendWxText } = require('../wechat-send-api');
 const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextForSend } = require('../qianfan-ws-bridge');
 const { withTimeout } = require('../cdp-timeout');
 const { ok, fail } = require('./adapter-result');
+const { println } = require('../utils');
 
 const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 55000;
 const isDistributed = () => process.env.QIANFAN_DISTRIBUTED_RUNTIME === '1';
@@ -65,25 +66,31 @@ async function sendQianfanReplyRequest(request = {}) {
       return fail(new Error('缺少 replyId 或 pending 上下文'), 'INVALID_REQUEST');
     }
 
-    if (!pending.appCid || !receiverAppUids?.length) {
-      const resolved = await withTimeout(
-        resolveReplyContextForSend(
-          pending.shopTitle,
-          pending.buyerNick,
-          pending.appCid,
-        ),
+    if (!findBridgeByShopTitle(pending.shopTitle)) {
+      const reason = '店铺页面未接入，请到千帆手动回复';
+      if (!isDistributed()) {
+        await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
+      }
+      return fail(new Error(reason), 'SHOP_NOT_ATTACHED');
+    }
+
+    try {
+      const live = await withTimeout(
+        resolveReplyContextForSend(pending.shopTitle, pending.buyerNick, pending.appCid),
         12000,
         'resolveReplyContextForSend',
       );
-      if (resolved) {
+      if (live) {
         pending = {
           ...pending,
-          appCid: pending.appCid || resolved.appCid,
-          buyerNick: pending.buyerNick || resolved.buyerNick,
-          receiverAppUids: pending.receiverAppUids?.length ? pending.receiverAppUids : resolved.receiverAppUids,
+          appCid: live.appCid || pending.appCid,
+          buyerNick: live.buyerNick || pending.buyerNick,
+          receiverAppUids: live.receiverAppUids?.length ? live.receiverAppUids : pending.receiverAppUids,
         };
-        receiverAppUids = receiverAppUids?.length ? receiverAppUids : resolved.receiverAppUids;
+        receiverAppUids = pending.receiverAppUids;
       }
+    } catch (err) {
+      println(`[千帆发送] 实时会话解析失败，使用 pending 上下文：${err.message || err}`);
     }
 
     if (!pending.appCid) {
@@ -100,14 +107,6 @@ async function sendQianfanReplyRequest(request = {}) {
         await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
       }
       return fail(new Error(reason), 'MISSING_RECEIVER');
-    }
-
-    if (!findBridgeByShopTitle(pending.shopTitle)) {
-      const reason = '店铺页面未接入，请到千帆手动回复';
-      if (!isDistributed()) {
-        await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
-      }
-      return fail(new Error(reason), 'SHOP_NOT_ATTACHED');
     }
 
     const ack = await withTimeout(

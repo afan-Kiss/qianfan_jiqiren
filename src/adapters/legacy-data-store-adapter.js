@@ -277,11 +277,6 @@ async function executeAction(action, data = {}) {
         if (pending?.shopTitle && !enriched.shopTitle) enriched.shopTitle = pending.shopTitle;
         if (pending?.buyerNick && !enriched.buyerNick) enriched.buyerNick = pending.buyerNick;
       }
-      if (enriched.replyId && (!enriched.shopTitle || !enriched.buyerNick) && data.quoteText) {
-        const quoteCtx = dataStore.parseNoticeContextFromText(data.quoteText);
-        if (!enriched.shopTitle && quoteCtx.shopTitle) enriched.shopTitle = quoteCtx.shopTitle;
-        if (!enriched.buyerNick && quoteCtx.buyerNick) enriched.buyerNick = quoteCtx.buyerNick;
-      }
       const wxMsgId = String(enriched.wxMsgId || '').trim()
         || (enriched.replyId ? `reply:${enriched.replyId}:${enriched.targetWxid || 'default'}` : '');
       if (wxMsgId) {
@@ -353,14 +348,8 @@ async function executeAction(action, data = {}) {
       return ok({ saved: true, replyId: record.replyId });
     }
     case 'pendingReply.get': {
-      const pending = dataStore.resolvePendingReply({
-        replyId: data.replyId,
-        fromWxid: data.fromWxid,
-        quotedWxMsgId: data.quotedWxMsgId || data.wxMsgId,
-        wxMsgId: data.wxMsgId,
-        quoteText: data.quoteText,
-      });
-      return ok({ pending, recreated: Boolean(pending?.recreated) });
+      const pending = dataStore.findPendingByReplyId(data.replyId);
+      return ok({ pending });
     }
     case 'pendingReply.findOpenForBuyer': {
       const message = data.message || data;
