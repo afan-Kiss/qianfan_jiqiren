@@ -5,10 +5,21 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./wechat/wxbot-new-config');
 const { isAuthorizedReplyWxid, findNotifyTargetByRecipient } = config;
-const { lookupSentNotificationForQuote } = require('./qianfan-data-store');
+const { lookupSentNotificationForQuote, findPendingByReplyId } = require('./qianfan-data-store');
 
 const REPLY_ID_PATTERN = /【千帆待回复\s*#(\d+)】/;
 const NUMBER_REPLY_PATTERN = /^#?(\d{3,8})\s+([\s\S]+)$/;
+
+function extractNoticeField(text, label) {
+  const s = String(text || '');
+  const withColon = s.match(new RegExp(`${label}[：:]\\s*([^\\n]+)`));
+  if (withColon?.[1]) return withColon[1].trim();
+  const withSpaces = s.match(new RegExp(`${label}\\s{2,}([^\\n]+)`));
+  if (withSpaces?.[1]) return withSpaces[1].trim();
+  const withSpace = s.match(new RegExp(`${label}\\s+([^\\n]+)`));
+  if (withSpace?.[1]) return withSpace[1].trim();
+  return '';
+}
 
 function parseReplyIdFromText(text) {
   const s = String(text || '');
@@ -330,14 +341,14 @@ function parseRobotNotificationForMap(parsed, body) {
   const wxMsgId = extractWxMsgId(data, root) || parsed.wxMsgId || '';
   if (!wxMsgId) return null;
 
-  const idMatch = text.match(/店铺：([^\n]+)/);
-  const buyerMatch = text.match(/买家：([^\n]+)/);
+  const pending = findPendingByReplyId(replyId);
 
   return {
     wxMsgId,
     replyId,
-    shopTitle: idMatch?.[1]?.trim() || '',
-    buyerNick: buyerMatch?.[1]?.trim() || '',
+    shopTitle: extractNoticeField(text, '店铺') || pending?.shopTitle || '',
+    buyerNick: extractNoticeField(text, '买家') || pending?.buyerNick || '',
+    appCid: pending?.appCid || '',
     targetWxid: target.wxid,
     sentAt: Date.now(),
   };

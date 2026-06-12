@@ -299,14 +299,21 @@ function recordSentNotification(entry) {
   const map = loadSentMap();
   const wxMsgId = String(entry?.wxMsgId || '').trim();
   if (!wxMsgId) return false;
-  map[wxMsgId] = {
-    replyId: Number(entry.replyId),
-    shopTitle: String(entry.shopTitle || '').trim(),
-    appCid: String(entry.appCid || '').trim(),
-    buyerNick: String(entry.buyerNick || '').trim(),
-    sentAt: Number(entry.sentAt || Date.now()),
-    targetWxid: String(entry.targetWxid || '').trim(),
+  const replyId = Number(entry.replyId);
+  const prevByReply = Number.isFinite(replyId) ? lookupSentNotificationByReplyId(replyId) : null;
+  const prev = map[wxMsgId] || prevByReply || null;
+  const merged = {
+    replyId: Number.isFinite(replyId) ? replyId : Number(prev?.replyId),
+    shopTitle: String(entry.shopTitle || prev?.shopTitle || '').trim(),
+    appCid: String(entry.appCid || prev?.appCid || '').trim(),
+    buyerNick: String(entry.buyerNick || prev?.buyerNick || '').trim(),
+    sentAt: Number(entry.sentAt || prev?.sentAt || Date.now()),
+    targetWxid: String(entry.targetWxid || prev?.targetWxid || '').trim(),
   };
+  map[wxMsgId] = merged;
+  if (Number.isFinite(merged.replyId)) {
+    map[`replyId:${merged.replyId}`] = { ...merged, wxMsgId };
+  }
   writeJson(SENT_MAP_FILE, trimSentMap(map));
   return true;
 }
@@ -341,6 +348,135 @@ function lookupSentNotificationForQuote(quotedMsgId, fromWxid = '') {
   }
 
   return direct;
+}
+
+function lookupSentNotificationByReplyId(replyId, fromWxid = '') {
+  const num = Number(String(replyId || '').replace(/^#/, ''));
+  if (!Number.isFinite(num)) return null;
+  const sender = String(fromWxid || '').trim();
+  const map = loadSentMap();
+  const indexed = map[`replyId:${num}`];
+  if (indexed) {
+    const hit = { ...indexed, wxMsgId: String(indexed.wxMsgId || '').trim() };
+    if (!sender || !hit.targetWxid || hit.targetWxid === sender) return hit;
+  }
+  let fallback = null;
+  for (const [wxMsgId, entry] of Object.entries(map)) {
+    if (String(wxMsgId).startsWith('replyId:')) continue;
+    if (Number(entry?.replyId) !== num) continue;
+    const hit = { ...entry, wxMsgId: String(entry?.wxMsgId || wxMsgId || '').trim() };
+    if (!sender || !hit.targetWxid || hit.targetWxid === sender) return hit;
+    if (!fallback) fallback = hit;
+  }
+  return fallback;
+}
+
+function extractNoticeFieldFromText(text, label) {
+  const s = String(text || '');
+  const withColon = s.match(new RegExp(`${label}[：:]\\s*([^\\n]+)`));
+  if (withColon?.[1]) return withColon[1].trim();
+  const withSpaces = s.match(new RegExp(`${label}\\s{2,}([^\\n]+)`));
+  if (withSpaces?.[1]) return withSpaces[1].trim();
+  const withSpace = s.match(new RegExp(`${label}\\s+([^\\n]+)`));
+  if (withSpace?.[1]) return withSpace[1].trim();
+  return '';
+}
+
+function parseNoticeContextFromText(text) {
+  return {
+    shopTitle: extractNoticeFieldFromText(text, '店铺'),
+    buyerNick: extractNoticeFieldFromText(text, '买家'),
+  };
+}
+
+function findSessionContextForBuyer(shopTitle, buyerNick = '') {
+  const shopKey = normalizeShopKey(shopTitle);
+  const nick = String(buyerNick || '').trim();
+  const all = readJson(SESSION_CONTEXT_FILE, {});
+  const matches = [];
+  for (const ctx of Object.values(all)) {
+    if (!ctx || typeof ctx !== 'object') continue;
+    if (normalizeShopKey(ctx.shopTitle) !== shopKey) continue;
+    if (nick && String(ctx.buyerNick || '').trim() && String(ctx.buyerNick || '').trim() !== nick) continue;
+    matches.push(ctx);
+  }
+  if (!matches.length) return null;
+  matches.sort((a, b) => Number(b.updatedAt || b.lastBuyerMsgAt || 0) - Number(a.updatedAt || a.lastBuyerMsgAt || 0));
+  return matches[0];
+}
+
+function reconstructPendingFromReplyId(replyId, options = {}) {
+  const num = Number(String(replyId || '').replace(/^#/, ''));
+  if (!Number.isFinite(num)) return null;
+
+  const existing = findPendingByReplyId(num);
+  if (existing) return existing;
+
+  const fromWxid = String(options.fromWxid || '').trim();
+  const quotedWxMsgId = String(options.quotedWxMsgId || options.wxMsgId || '').trim();
+  const quoteText = String(options.quoteText || '').trim();
+  const quoteCtx = quoteText ? parseNoticeContextFromText(quoteText) : {};
+
+  let mapEntry = quotedWxMsgId ? lookupSentNotificationForQuote(quotedWxMsgId, fromWxid) : null;
+  if (!mapEntry) mapEntry = lookupSentNotificationByReplyId(num, fromWxid);
+  if (!mapEntry && quoteCtx.shopTitle) {
+    mapEntry = {
+      replyId: num,
+      shopTitle: quoteCtx.shopTitle,
+      buyerNick: quoteCtx.buyerNick,
+      appCid: '',
+      sentAt: Date.now(),
+      targetWxid: fromWxid,
+    };
+  }
+  if (!mapEntry) return null;
+
+  let shopTitle = String(mapEntry.shopTitle || quoteCtx.shopTitle || '').trim();
+  let buyerNick = String(mapEntry.buyerNick || quoteCtx.buyerNick || '').trim();
+  let appCid = String(mapEntry.appCid || '').trim();
+  let ctx = shopTitle && appCid ? getSessionContext(shopTitle, appCid) : null;
+  if (!ctx && shopTitle) {
+    ctx = findSessionContextForBuyer(shopTitle, buyerNick || mapEntry.buyerNick);
+    if (ctx?.appCid) appCid = String(ctx.appCid).trim();
+    if (ctx?.buyerNick) buyerNick = buyerNick || String(ctx.buyerNick).trim();
+  }
+
+  if (!appCid && shopTitle) {
+    const cids = getActiveSessionAppCids(shopTitle);
+    if (cids.length === 1) {
+      appCid = cids[0];
+      ctx = getSessionContext(shopTitle, appCid) || ctx;
+    }
+  }
+
+  let receiverAppUids = Array.isArray(ctx?.receiverAppUids) ? ctx.receiverAppUids.filter(Boolean) : [];
+  if (!receiverAppUids.length && shopTitle && appCid) {
+    receiverAppUids = getReceiverAppUids(shopTitle, appCid);
+  }
+
+  const pending = {
+    replyId: num,
+    shopTitle,
+    appCid,
+    buyerNick: buyerNick || String(ctx?.buyerNick || mapEntry.buyerNick || '买家').trim(),
+    buyerMsgId: String(ctx?.buyerMsgId || '').trim(),
+    receiverAppUids,
+    status: 'notified',
+    recreated: true,
+    createdAt: Number(mapEntry.sentAt || ctx?.lastBuyerMsgAt || Date.now()),
+  };
+
+  if (!pending.shopTitle) return null;
+
+  appendPending(pending);
+  return pending;
+}
+
+function resolvePendingReply(options = {}) {
+  const replyId = options.replyId;
+  const pending = findPendingByReplyId(replyId);
+  if (pending) return pending;
+  return reconstructPendingFromReplyId(replyId, options);
 }
 
 function findPendingByReplyId(replyId) {
@@ -681,6 +817,11 @@ module.exports = {
   recordSentNotification,
   lookupSentNotificationByWxMsgId,
   lookupSentNotificationForQuote,
+  lookupSentNotificationByReplyId,
+  findSessionContextForBuyer,
+  parseNoticeContextFromText,
+  reconstructPendingFromReplyId,
+  resolvePendingReply,
   findPendingByReplyId,
   findOpenPendingForBuyer,
   rememberReceiverAppUids,

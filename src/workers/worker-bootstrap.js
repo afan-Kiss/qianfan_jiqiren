@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const path = require('path');
 
 const DEFAULT_REQUEST_TIMEOUT_MS = Number(process.env.QIANFAN_SIM_REQUEST_TIMEOUT_MS || 10000);
-const HEARTBEAT_INTERVAL_MS = Number(process.env.QIANFAN_SIM_HEARTBEAT_INTERVAL_MS || 5000);
+const HEARTBEAT_INTERVAL_MS = Number(process.env.QIANFAN_SIM_HEARTBEAT_INTERVAL_MS || 3000);
 
 function getRequestTimeoutMs() {
   let timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS;
@@ -19,7 +19,11 @@ function getRequestTimeoutMs() {
 }
 
 if (process.env.QIANFAN_SIM_MODE === '1') {
-  require(path.join(process.cwd(), 'scripts/sim/install-fake-deps')).installFakeDeps();
+  try {
+    require(path.join(process.cwd(), 'scripts/sim/install-fake-deps')).installFakeDeps();
+  } catch {
+    delete process.env.QIANFAN_SIM_MODE;
+  }
 }
 
 function createWorkerRuntime(options = {}) {

@@ -270,10 +270,22 @@ async function executeAction(action, data = {}) {
     }
     case 'notification.recordSuccess': {
       const entry = data.entry || data;
-      const wxMsgId = String(entry.wxMsgId || '').trim()
-        || (entry.replyId ? `reply:${entry.replyId}:${entry.targetWxid || 'default'}` : '');
+      let enriched = { ...entry };
+      if (enriched.replyId) {
+        const pending = dataStore.findPendingByReplyId(enriched.replyId);
+        if (pending?.appCid && !enriched.appCid) enriched.appCid = pending.appCid;
+        if (pending?.shopTitle && !enriched.shopTitle) enriched.shopTitle = pending.shopTitle;
+        if (pending?.buyerNick && !enriched.buyerNick) enriched.buyerNick = pending.buyerNick;
+      }
+      if (enriched.replyId && (!enriched.shopTitle || !enriched.buyerNick) && data.quoteText) {
+        const quoteCtx = dataStore.parseNoticeContextFromText(data.quoteText);
+        if (!enriched.shopTitle && quoteCtx.shopTitle) enriched.shopTitle = quoteCtx.shopTitle;
+        if (!enriched.buyerNick && quoteCtx.buyerNick) enriched.buyerNick = quoteCtx.buyerNick;
+      }
+      const wxMsgId = String(enriched.wxMsgId || '').trim()
+        || (enriched.replyId ? `reply:${enriched.replyId}:${enriched.targetWxid || 'default'}` : '');
       if (wxMsgId) {
-        dataStore.recordSentNotification({ ...entry, wxMsgId });
+        dataStore.recordSentNotification({ ...enriched, wxMsgId });
       }
       return ok({ saved: true });
     }
@@ -341,8 +353,14 @@ async function executeAction(action, data = {}) {
       return ok({ saved: true, replyId: record.replyId });
     }
     case 'pendingReply.get': {
-      const pending = dataStore.findPendingByReplyId(data.replyId);
-      return ok({ pending });
+      const pending = dataStore.resolvePendingReply({
+        replyId: data.replyId,
+        fromWxid: data.fromWxid,
+        quotedWxMsgId: data.quotedWxMsgId || data.wxMsgId,
+        wxMsgId: data.wxMsgId,
+        quoteText: data.quoteText,
+      });
+      return ok({ pending, recreated: Boolean(pending?.recreated) });
     }
     case 'pendingReply.findOpenForBuyer': {
       const message = data.message || data;

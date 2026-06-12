@@ -5,6 +5,19 @@ const LEVEL = {
   unknown: 'unknown',
 };
 
+/** worker 心跳约 3s 一次；看门狗超时默认 20s */
+const WATCHDOG_NORMAL_MS = 15000;
+const WATCHDOG_WARN_MS = 25000;
+
+function resolveWatchdogFeedAt(lastWatchdogFeedAt, lastWorkerHeartbeatAt) {
+  const feed = Number(lastWatchdogFeedAt || 0);
+  const worker = Number(lastWorkerHeartbeatAt || 0);
+  if (!feed && !worker) return null;
+  if (!feed) return worker;
+  if (!worker) return feed;
+  return Math.max(feed, worker);
+}
+
 const LEVEL_RANK = {
   unknown: 0,
   normal: 1,
@@ -40,8 +53,12 @@ function levelToProgressStatus(level) {
   return 'unknown';
 }
 
-function computeWatchdogHealth(lastWatchdogFeedAt, now = Date.now()) {
-  if (!lastWatchdogFeedAt) {
+function computeWatchdogHealth(lastWatchdogFeedAt, now = Date.now(), options = {}) {
+  const effectiveFeedAt = resolveWatchdogFeedAt(
+    lastWatchdogFeedAt,
+    options.lastWorkerHeartbeatAt,
+  );
+  if (!effectiveFeedAt) {
     return {
       level: LEVEL.unknown,
       watchdogStatus: 'unknown',
@@ -50,8 +67,8 @@ function computeWatchdogHealth(lastWatchdogFeedAt, now = Date.now()) {
     };
   }
 
-  const ageMs = now - lastWatchdogFeedAt;
-  if (ageMs <= 90000) {
+  const ageMs = now - effectiveFeedAt;
+  if (ageMs <= WATCHDOG_NORMAL_MS) {
     return {
       level: LEVEL.normal,
       watchdogStatus: 'normal',
@@ -60,7 +77,7 @@ function computeWatchdogHealth(lastWatchdogFeedAt, now = Date.now()) {
       showCheck: true,
     };
   }
-  if (ageMs <= 150000) {
+  if (ageMs <= WATCHDOG_WARN_MS) {
     return {
       level: LEVEL.warning,
       watchdogStatus: 'delayed',
@@ -159,10 +176,17 @@ function computeWechatHealth(snapshot, now = Date.now()) {
     wechatReady,
     callback = {},
     notifier = {},
+    reply = {},
     notifyAccountCount = 0,
   } = snapshot;
 
-  const checkedAt = callback.lastHeartbeatAt || callback.lastStatusAt || now;
+  const wechatHeartbeats = [callback, notifier, reply]
+    .map((worker) => Number(worker.lastHeartbeatAt || 0))
+    .filter((ts) => ts > 0);
+  const latestWechatBeat = wechatHeartbeats.length ? Math.max(...wechatHeartbeats) : 0;
+  const wechatBeatFresh = latestWechatBeat > 0 && (now - latestWechatBeat) <= WATCHDOG_NORMAL_MS;
+
+  const checkedAt = latestWechatBeat || callback.lastHeartbeatAt || callback.lastStatusAt || now;
 
   if (!relayRunning) {
     return {
@@ -202,6 +226,17 @@ function computeWechatHealth(snapshot, now = Date.now()) {
   }
 
   if (['starting', 'degraded', 'restarting'].includes(callback.status) || !wechatReady) {
+    const booting = ['starting', 'degraded'].includes(callback.status)
+      || callback.phase === 'starting'
+      || callback.phase === 'degraded';
+    if (wechatBeatFresh && booting) {
+      return {
+        level: LEVEL.warning,
+        wechatStatus: 'warning',
+        label: '● 微信正在启动…',
+        checkedAt,
+      };
+    }
     return {
       level: LEVEL.warning,
       wechatStatus: 'warning',
@@ -346,6 +381,7 @@ function computeRuntimeHealth(rawStatus = {}, options = {}) {
   const listener = workers.find((worker) => worker.workerName === 'qianfan-listener') || {};
   const callback = workers.find((worker) => worker.workerName === 'wechat-callback') || {};
   const notifier = workers.find((worker) => worker.workerName === 'wechat-notifier') || {};
+  const reply = workers.find((worker) => worker.workerName === 'wechat-reply') || {};
 
   const supervisorStatus = rawStatus.supervisorStatus || 'stopped';
   const relayRunning = ['starting', 'running', 'degraded'].includes(supervisorStatus);
@@ -370,6 +406,7 @@ function computeRuntimeHealth(rawStatus = {}, options = {}) {
     listener,
     callback,
     notifier,
+    reply,
     workers,
     notifyAccountCount: Number(options.notifyAccountCount || 0),
     lastWorkerHeartbeatAt,
@@ -377,7 +414,7 @@ function computeRuntimeHealth(rawStatus = {}, options = {}) {
     lastStatusAt: now,
   };
 
-  const worker = computeWatchdogHealth(lastWatchdogFeedAt, now);
+  const worker = computeWatchdogHealth(lastWatchdogFeedAt, now, { lastWorkerHeartbeatAt });
   const qianfan = computeQianfanHealth(snapshot, now);
   const wechat = computeWechatHealth(snapshot, now);
   const relay = computeRelayHealth(snapshot, worker);
@@ -454,6 +491,9 @@ function isRoutineWatchdogOkMessage(message = '') {
 
 module.exports = {
   LEVEL,
+  WATCHDOG_NORMAL_MS,
+  WATCHDOG_WARN_MS,
+  resolveWatchdogFeedAt,
   computeRuntimeHealth,
   computeWatchdogHealth,
   computeQianfanHealth,

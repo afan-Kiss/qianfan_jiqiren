@@ -50,7 +50,7 @@ const {
   isUsableTextManualTemplate,
   isValidAppCid,
 } = require('./qf-send-payload');
-const { getSessionContext } = require('./qianfan-data-store');
+const { getSessionContext, getReceiverAppUids } = require('./qianfan-data-store');
 const { installUiSyncBridge } = require('./qianfan-ui-sync');
 const { triggerNativeSyncAfterAck, installNativeSyncBridge } = require('./qianfan-native-sync');
 const { println } = require('./utils');
@@ -59,8 +59,10 @@ const { logBotSendLifecycle, summarizePayload } = require('./capture/bot-send-de
 
 const bridges = new Map();
 const shopWakeReconnect = new Map();
-const IMPAAS_WAKE_WAIT_MS = 800;
-const IMPAAS_RECONNECT_WAIT_MS = 3500;
+const IMPAAS_WAKE_WAIT_MS = 1200;
+const IMPAAS_RECONNECT_WAIT_MS = 4500;
+const IMPAAS_SEND_RETRY_ROUNDS = 3;
+const IMPAAS_SESSION_FRESH_MS = 120000;
 const ACK_TIMEOUT_MS = 8000;
 const ECHO_VERIFY_MS = 10000;
 const UI_SYNC_TIMEOUT_MS = 12000;
@@ -705,6 +707,7 @@ function patchMessageListBody(bodyTemplate, appCid) {
 async function fetchMessageListForAppCid(bridge, appCid) {
   const tpl = bridge.lastMessageListRequest;
   if (!tpl?.url || !tpl?.headers) return { ok: false, reason: 'http_template_missing' };
+  if (!isBridgeCdpReady(bridge)) return { ok: false, reason: 'cdp_not_ready' };
 
   const body = patchMessageListBody(tpl.bodyTemplate, appCid);
   const { Runtime } = bridge.client;
@@ -738,41 +741,65 @@ async function fetchMessageListForAppCid(bridge, appCid) {
   }
 }
 
+function hasRecentImpaasSession(bridge) {
+  const now = Date.now();
+  for (const sess of bridge?.wsSessions?.values() || []) {
+    if (!isImpaasWsSession(sess, bridge)) continue;
+    if (sess.lastActivityAt && now - sess.lastActivityAt <= IMPAAS_SESSION_FRESH_MS) return true;
+  }
+  return false;
+}
+
+async function hasLiveImpaasWs(bridge) {
+  if (!isBridgeCdpReady(bridge)) return false;
+  const probed = await probePageImpaasWs(bridge);
+  if (probed.ok) return true;
+  return hasRecentImpaasSession(bridge);
+}
+
 function hasShopImpaasWs(bridge) {
-  if ([...bridge.wsSessions.values()].some((s) => isImpaasWsSession(s, bridge))) return true;
-  return [...bridge.wsUrls.values()].some((u) => {
-    const url = String(u || '').toLowerCase();
-    return url.includes('longlink') || url.includes('impaas') || url.includes('walle');
-  });
+  return hasRecentImpaasSession(bridge);
 }
 
 async function probePageImpaasWs(bridge) {
-  if (!isBridgeCdpReady(bridge)) return false;
+  if (!isBridgeCdpReady(bridge)) return { ok: false, count: 0 };
   try {
     const result = await cdpRuntimeEvaluate(bridge.client.Runtime, {
       expression: `(function(){
+        if (window.__qfRehookImpaasSockets) window.__qfRehookImpaasSockets();
         var list = window.__qfImpaasSockets || [];
         var open = list.filter(function(w){ return w && w.readyState === 1; });
-        return { ok: open.length > 0, count: open.length };
+        return { ok: open.length > 0, count: open.length, total: list.length };
       })()`,
       returnByValue: true,
     });
-    return Boolean(result?.result?.value?.ok);
+    const value = result?.result?.value;
+    return { ok: Boolean(value?.ok), count: Number(value?.count) || 0, total: Number(value?.total) || 0 };
   } catch {
-    return false;
+    return { ok: false, count: 0, total: 0 };
   }
 }
 
 async function refreshBridgeNetwork(client) {
+  if (!client?.Network) return false;
   try {
     const { Network } = client;
-    if (!Network) return false;
     await cdpNetworkDisable(Network);
     await cdpNetworkEnable(Network);
     return true;
   } catch {
     return false;
   }
+}
+
+async function waitForBridgeCdpReady(shopTitle, timeoutMs = IMPAAS_RECONNECT_WAIT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const bridge = findBridgeByShopTitle(shopTitle);
+    if (bridge && isBridgeCdpReady(bridge)) return bridge;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return findBridgeByShopTitle(shopTitle);
 }
 
 function registerShopReconnectWake(shopTitle, fn) {
@@ -796,36 +823,46 @@ async function triggerShopReconnect(shopTitle, reason = 'send_no_ws') {
   }
 }
 
-async function ensureImpaasWsReady(bridge, appCid) {
+async function ensureImpaasWsReady(bridge, appCid, options = {}) {
   if (!bridge) return false;
-  if (hasShopImpaasWs(bridge) || (await probePageImpaasWs(bridge))) return true;
 
   const shopLabel = normalizeShopKey(bridge.shopTitle);
-  println(`[千帆发送] ${shopLabel} 未检测到 impaas WS，尝试唤醒...`);
+  const rounds = options.aggressive ? IMPAAS_SEND_RETRY_ROUNDS : 2;
 
-  if (isBridgeCdpReady(bridge)) {
-    await installWsHook(bridge.client);
-    await refreshBridgeNetwork(bridge.client);
-  }
-  if (appCid) {
-    noteBuyerAppCidOnBridge(bridge.shopTitle, appCid);
-    if (bridge.lastMessageListRequest) {
-      await fetchMessageListForAppCid(bridge, appCid);
+  for (let round = 0; round < rounds; round += 1) {
+    if (await hasLiveImpaasWs(bridge)) return true;
+
+    if (round === 0) {
+      println(`[千帆发送] ${shopLabel} 未检测到可用 impaas WS，尝试唤醒...`);
+    } else {
+      println(`[千帆发送] ${shopLabel} 第 ${round + 1} 次唤醒 impaas WS...`);
     }
-  }
 
-  await new Promise((r) => setTimeout(r, IMPAAS_WAKE_WAIT_MS));
-  if (hasShopImpaasWs(bridge) || (await probePageImpaasWs(bridge))) return true;
-
-  const reconnected = await triggerShopReconnect(bridge.shopTitle, 'send_no_ws');
-  if (reconnected) {
-    println(`[千帆发送] ${shopLabel} 已请求 CDP 重连，等待 impaas WS...`);
-    await new Promise((r) => setTimeout(r, IMPAAS_RECONNECT_WAIT_MS));
-    const refreshed = findBridgeByShopTitle(bridge.shopTitle) || bridge;
-    if (isBridgeCdpReady(refreshed)) {
-      await installWsHook(refreshed.client);
+    if (isBridgeCdpReady(bridge)) {
+      await installWsHook(bridge.client);
+      await refreshBridgeNetwork(bridge.client);
     }
-    return hasShopImpaasWs(refreshed) || (await probePageImpaasWs(refreshed));
+    if (appCid) {
+      noteBuyerAppCidOnBridge(bridge.shopTitle, appCid);
+      if (isBridgeCdpReady(bridge) && bridge.lastMessageListRequest) {
+        await fetchMessageListForAppCid(bridge, appCid);
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, IMPAAS_WAKE_WAIT_MS));
+    if (await hasLiveImpaasWs(bridge)) return true;
+
+    const reconnected = await triggerShopReconnect(bridge.shopTitle, 'send_no_ws');
+    if (reconnected) {
+      println(`[千帆发送] ${shopLabel} 已请求 CDP 重连，等待 impaas WS...`);
+      await new Promise((r) => setTimeout(r, IMPAAS_RECONNECT_WAIT_MS));
+      const refreshed = findBridgeByShopTitle(bridge.shopTitle) || bridge;
+      bridge = refreshed;
+      if (isBridgeCdpReady(refreshed)) {
+        await installWsHook(refreshed.client);
+      }
+      if (await hasLiveImpaasWs(refreshed)) return true;
+    }
   }
 
   return false;
@@ -919,6 +956,7 @@ function buildSendPayload({ appCid, receiverAppUids, text, seq, manualTemplate }
 }
 
 async function installWsHook(client) {
+  if (!client?.Runtime) return false;
   const { Runtime, Page } = client;
   try {
     await cdpAddScriptToEvaluateOnNewDocument(Page, WS_HOOK_SCRIPT);
@@ -927,26 +965,38 @@ async function installWsHook(client) {
   }
   await cdpRuntimeEvaluate(Runtime, { expression: WS_HOOK_SCRIPT, returnByValue: true }).catch(() => {});
   await installNativeSyncBridge(client);
+  return true;
 }
 
 async function sendViaPageRuntime(client, payloadStr, appCid) {
+  if (!client?.Runtime) return { ok: false, reason: 'cdp_not_ready' };
   const { Runtime } = client;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     try {
       const result = await cdpRuntimeEvaluate(Runtime, {
       expression: `(function(){
         var appCid = ${JSON.stringify(appCid || '')};
+        var payloadStr = ${JSON.stringify(payloadStr)};
+        if (window.__qfRehookImpaasSockets) window.__qfRehookImpaasSockets();
         var pick = window.__qfPickSendSocket && window.__qfPickSendSocket(appCid);
-        var list = window.__qfImpaasSockets || [];
+        var list = (window.__qfImpaasSockets || []).filter(function(w){ return w && w.readyState === 1; });
         var ws = null;
         if (pick && pick.ok) {
           ws = list.find(function(w){ return w && w.readyState === 1 && String(w.url||'') === pick.url; });
         }
         if (!ws) ws = list.find(function(w){ return w && w.readyState === 1 && (w.__qfSendRank || 0) >= 100; });
         if (!ws) ws = list.find(function(w){ return w && w.readyState === 1; });
-        if (!ws) return { ok: false, reason: 'no_ws', count: list.length };
-        ws.send(${JSON.stringify(payloadStr)});
-        return { ok: true, url: String(ws.url || ''), rank: ws.__qfSendRank || 0, count: list.length };
+        if (ws) {
+          ws.send(payloadStr);
+          return { ok: true, url: String(ws.url || ''), rank: ws.__qfSendRank || 0, count: list.length, method: 'page_ws' };
+        }
+        if (window.__qfSendWsPayload) {
+          var helper = window.__qfSendWsPayload(payloadStr, appCid);
+          if (helper && helper.ok) {
+            return { ok: true, url: helper.url || '', rank: 0, count: helper.count || list.length, method: 'page_helper' };
+          }
+        }
+        return { ok: false, reason: 'no_ws', count: list.length };
       })()`,
       returnByValue: true,
     });
@@ -960,11 +1010,57 @@ async function sendViaPageRuntime(client, payloadStr, appCid) {
   return { ok: false, reason: 'no_ws' };
 }
 
+async function sendPayloadToImpaas(bridge, shopTitle, payloadStr, appCid) {
+  let currentBridge = bridge;
+  for (let round = 0; round < IMPAAS_SEND_RETRY_ROUNDS; round += 1) {
+    if (round > 0) {
+      await ensureImpaasWsReady(currentBridge, appCid, { aggressive: true });
+    }
+
+    currentBridge = await waitForBridgeCdpReady(shopTitle, IMPAAS_RECONNECT_WAIT_MS) || currentBridge;
+    if (!isBridgeCdpReady(currentBridge)) {
+      println(`[千帆发送] ${normalizeShopKey(shopTitle)} CDP 未就绪 round=${round + 1}`);
+      if (round + 1 < IMPAAS_SEND_RETRY_ROUNDS) {
+        await triggerShopReconnect(currentBridge?.shopTitle || shopTitle, 'send_no_ws');
+        await new Promise((r) => setTimeout(r, IMPAAS_RECONNECT_WAIT_MS));
+      }
+      continue;
+    }
+
+    const sent = await sendViaPageRuntime(currentBridge.client, payloadStr, appCid);
+    if (sent.ok) return sent;
+
+    const probed = await probePageImpaasWs(currentBridge);
+    println(
+      `[千帆发送] ${normalizeShopKey(shopTitle)} 发送失败 round=${round + 1} reason=${sent.reason || 'no_ws'} openWs=${probed.count}/${probed.total}`
+    );
+
+    if (round + 1 < IMPAAS_SEND_RETRY_ROUNDS) {
+      await triggerShopReconnect(currentBridge.shopTitle, 'send_no_ws');
+      await new Promise((r) => setTimeout(r, IMPAAS_RECONNECT_WAIT_MS));
+      currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
+    }
+  }
+  return { ok: false, reason: 'no_ws' };
+}
+
 function findBridgeByShopTitle(shopTitle) {
   const key = normalizeShopKey(shopTitle);
+  if (!key) return null;
+
   for (const [registered, bridge] of bridges) {
     if (normalizeShopKey(registered) === key) return bridge;
   }
+
+  for (const [registered, bridge] of bridges) {
+    const registeredKey = normalizeShopKey(registered);
+    if (!registeredKey) continue;
+    if (registeredKey.includes(key) || key.includes(registeredKey)) return bridge;
+    const strippedRegistered = registeredKey.replace(/^XY/i, '');
+    const strippedKey = key.replace(/^XY/i, '');
+    if (strippedRegistered && strippedKey && strippedRegistered === strippedKey) return bridge;
+  }
+
   return null;
 }
 
@@ -1123,7 +1219,7 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
 
   const shopLabel = normalizeShopKey(shopTitle);
   const impaasReady = await ensureImpaasWsReady(bridge, appCid);
-  bridge = findBridgeByShopTitle(shopTitle) || bridge;
+  bridge = (await waitForBridgeCdpReady(shopTitle, IMPAAS_RECONNECT_WAIT_MS)) || findBridgeByShopTitle(shopTitle) || bridge;
   if (!impaasReady) {
     throw new Error(
       `未找到店铺「${shopLabel}」可用的千帆 impaas WebSocket，请确认该店铺工作台已打开并处于活跃会话`
@@ -1232,13 +1328,23 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
 
   ctx.appCid = appCid;
 
-  const sent = await sendViaPageRuntime(bridge.client, built.payloadStr, appCid);
+  const sent = await sendPayloadToImpaas(bridge, shopTitle, built.payloadStr, appCid);
+  bridge = findBridgeByShopTitle(shopTitle) || bridge;
   if (!sent.ok) {
     writeSendDebug({ event: 'send_fail', reason: sent.reason || 'no_ws', ...ctx });
-    throw new Error(`未找到店铺「${shopLabel}」可用的千帆 impaas WebSocket，请确认该店铺工作台已打开`);
+    throw new Error(
+      `未找到店铺「${shopLabel}」可用的千帆 impaas WebSocket，请确认该店铺工作台已打开并处于活跃会话`
+    );
   }
 
-  writeSendDebug({ event: 'ws_send_called', wsUrl: sent.url, wsRank: sent.rank, wsCount: sent.count, ...ctx });
+  writeSendDebug({
+    event: 'ws_send_called',
+    wsUrl: sent.url,
+    wsRank: sent.rank,
+    wsCount: sent.count,
+    sendMethod: sent.method || 'page_ws',
+    ...ctx,
+  });
 
   const sentAtMs = Date.now();
   let ack;
@@ -1385,7 +1491,72 @@ function getBridgeActiveAppCids(bridge) {
       if (s) set.add(s);
     }
   }
+  for (const cid of bridge.lastManualSendByAppCid?.keys?.() || []) {
+    const s = String(cid || '').trim();
+    if (s) set.add(s);
+  }
   return [...set];
+}
+
+function resolveReplyContextFromBridge(shopTitle, buyerNick = '') {
+  const bridge = findBridgeByShopTitle(shopTitle);
+  if (!bridge) return null;
+
+  const shopKey = normalizeShopKey(shopTitle);
+  const nick = String(buyerNick || '').trim();
+
+  for (const appCid of getBridgeActiveAppCids(bridge)) {
+    const ctx = getSessionContext(shopKey, appCid);
+    if (ctx) {
+      if (nick && ctx.buyerNick && String(ctx.buyerNick).trim() !== nick) continue;
+      const receiverAppUids = ctx.receiverAppUids?.length
+        ? [...ctx.receiverAppUids]
+        : getReceiverAppUids(shopKey, appCid);
+      if (receiverAppUids.length) {
+        return {
+          shopTitle: shopKey,
+          appCid,
+          buyerNick: String(ctx.buyerNick || nick || '买家').trim(),
+          receiverAppUids,
+        };
+      }
+    }
+  }
+
+  for (const [appCid, sample] of bridge.lastManualSendByAppCid?.entries?.() || []) {
+    const manualUids = Array.isArray(sample?.receiverAppUids)
+      ? sample.receiverAppUids.map((u) => String(u || '').trim()).filter(Boolean)
+      : [];
+    const receiverAppUids = manualUids.length ? manualUids : getReceiverAppUids(shopKey, appCid);
+    if (!receiverAppUids.length) continue;
+    const ctx = getSessionContext(shopKey, appCid);
+    if (nick && ctx?.buyerNick && String(ctx.buyerNick).trim() !== nick) continue;
+    return {
+      shopTitle: shopKey,
+      appCid: String(appCid),
+      buyerNick: String(ctx?.buyerNick || nick || '买家').trim(),
+      receiverAppUids,
+    };
+  }
+
+  const activeCids = getBridgeActiveAppCids(bridge);
+  if (activeCids.length === 1) {
+    const appCid = activeCids[0];
+    const manual = bridge.lastManualSendByAppCid.get(appCid);
+    const receiverAppUids = manual?.receiverAppUids?.length
+      ? manual.receiverAppUids
+      : getReceiverAppUids(shopKey, appCid);
+    if (receiverAppUids.length) {
+      return {
+        shopTitle: shopKey,
+        appCid,
+        buyerNick: nick || '买家',
+        receiverAppUids,
+      };
+    }
+  }
+
+  return null;
 }
 
 function listRegisteredShops() {
@@ -1405,6 +1576,7 @@ module.exports = {
   markBridgeCdpClosed,
   sendQianfanTextReply,
   findBridgeByShopTitle,
+  resolveReplyContextFromBridge,
   noteBuyerAppCidOnBridge,
   listRegisteredShops,
   normalizeShopKey,

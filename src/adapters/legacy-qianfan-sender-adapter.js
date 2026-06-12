@@ -1,6 +1,6 @@
 const config = require('../wechat/wxbot-new-config');
 const { sendWxText } = require('../wechat-send-api');
-const { findBridgeByShopTitle, sendQianfanTextReply } = require('../qianfan-ws-bridge');
+const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextFromBridge } = require('../qianfan-ws-bridge');
 const { withTimeout } = require('../cdp-timeout');
 const { ok, fail } = require('./adapter-result');
 
@@ -32,7 +32,7 @@ async function sendFailureReceipt({ replyId, pending, reason, text, fromWxid }) 
 }
 
 async function sendQianfanReplyRequest(request = {}) {
-  const {
+  let {
     replyId,
     replyText,
     pending,
@@ -52,6 +52,19 @@ async function sendQianfanReplyRequest(request = {}) {
         });
       }
       return fail(new Error('缺少 replyId 或 pending 上下文'), 'INVALID_REQUEST');
+    }
+
+    if (!pending.appCid || !receiverAppUids?.length) {
+      const resolved = resolveReplyContextFromBridge(pending.shopTitle, pending.buyerNick);
+      if (resolved) {
+        pending = {
+          ...pending,
+          appCid: pending.appCid || resolved.appCid,
+          buyerNick: pending.buyerNick || resolved.buyerNick,
+          receiverAppUids: pending.receiverAppUids?.length ? pending.receiverAppUids : resolved.receiverAppUids,
+        };
+        receiverAppUids = receiverAppUids?.length ? receiverAppUids : resolved.receiverAppUids;
+      }
     }
 
     if (!receiverAppUids?.length) {

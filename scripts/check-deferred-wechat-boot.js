@@ -45,7 +45,15 @@ async function main() {
     time: Date.now(),
   });
 
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    const pending = WECHAT_BOOT_ORDER.some((workerName) => {
+      const status = supervisor.getWorkerStatus(workerName).status;
+      return status !== 'running';
+    });
+    if (!pending) break;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
 
   for (const workerName of WECHAT_BOOT_ORDER) {
     const status = supervisor.getWorkerStatus(workerName);

@@ -18,7 +18,7 @@ function baseSnapshot(overrides = {}) {
     qianfanReady: true,
     listenerReady: true,
     wechatReady: true,
-    lastWatchdogFeedAt: Date.now() - 18000,
+    lastWatchdogFeedAt: Date.now() - 10000,
     workers: [
       {
         workerName: 'qianfan-listener',
@@ -108,15 +108,18 @@ async function main() {
   health = computeRuntimeHealth(baseSnapshot({ supervisorStatus: 'degraded' }), { notifyAccountCount: 1, now });
   assert.strictEqual(health.relayStatus, 'warning');
 
-  assert.strictEqual(computeWatchdogHealth(now - 60000, now).watchdogStatus, 'normal');
-  assert.strictEqual(computeWatchdogHealth(now - 96000, now).watchdogStatus, 'delayed');
-  assert.strictEqual(computeWatchdogHealth(now - 168000, now).watchdogStatus, 'timeout');
+  assert.strictEqual(computeWatchdogHealth(now - 10000, now).watchdogStatus, 'normal');
+  assert.strictEqual(computeWatchdogHealth(now - 18000, now).watchdogStatus, 'delayed');
+  assert.strictEqual(computeWatchdogHealth(now - 30000, now).watchdogStatus, 'timeout');
   assert.strictEqual(computeWatchdogHealth(null, now).watchdogStatus, 'unknown');
 
   const prev = computeRuntimeHealth(baseSnapshot(), { notifyAccountCount: 1, now });
   const next = computeRuntimeHealth(baseSnapshot({
-    lastWatchdogFeedAt: now - 120000,
-    workers: baseSnapshot().workers,
+    lastWatchdogFeedAt: now - 20000,
+    workers: baseSnapshot().workers.map((worker) => ({
+      ...worker,
+      lastHeartbeatAt: now - 20000,
+    })),
   }), { notifyAccountCount: 1, now });
   const transitions = buildHealthTransitionLogs(prev, next);
   assert.ok(transitions.some((item) => /worker/.test(item.message)));
@@ -160,7 +163,7 @@ async function main() {
     watchdog: { heartbeatIntervalMs: 200, heartbeatTimeoutMs: 2000, checkIntervalMs: 200 },
   });
   supervisor.setNotifyAccountCount(1);
-  supervisor.lastWatchdogFeedAt = now - 18000;
+  supervisor.lastWatchdogFeedAt = now - 10000;
   supervisor.state.setSupervisorStatus('running');
   supervisor.state.setWorkerStatus('qianfan-listener', {
     status: 'running',

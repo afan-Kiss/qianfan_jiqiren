@@ -167,17 +167,26 @@ class WorkerRunner extends EventEmitter {
   tryForkOnce(oneShotEnv = {}) {
     let child;
     try {
+      const env = {
+        ...process.env,
+        ...this.extraEnv,
+        ...oneShotEnv,
+        QIANFAN_WORKER_NAME: this.workerName,
+        QIANFAN_RUNTIME_MODE: 'distributed',
+        QIANFAN_APP_ROOT: this.rootDir,
+        QIANFAN_RUNTIME_ROOT: this.runtimeRoot,
+      };
+      const simExplicit = this.extraEnv?.QIANFAN_SIM_MODE === '1'
+        || oneShotEnv?.QIANFAN_SIM_MODE === '1';
+      if (!simExplicit) {
+        for (const key of Object.keys(env)) {
+          if (key.startsWith('QIANFAN_SIM_')) delete env[key];
+        }
+      }
+
       child = this.forkFn(this.workerEntry, [], {
         cwd: this.rootDir,
-        env: {
-          ...process.env,
-          ...this.extraEnv,
-          ...oneShotEnv,
-          QIANFAN_WORKER_NAME: this.workerName,
-          QIANFAN_RUNTIME_MODE: 'distributed',
-          QIANFAN_APP_ROOT: this.rootDir,
-          QIANFAN_RUNTIME_ROOT: this.runtimeRoot,
-        },
+        env,
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       });
     } catch (err) {

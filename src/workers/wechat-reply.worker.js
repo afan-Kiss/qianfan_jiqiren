@@ -26,6 +26,32 @@ const {
 
 const runtime = createWorkerRuntime({ workerName: 'wechat-reply' });
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadPendingReply(reply, traceId) {
+  const payload = {
+    replyId: reply.replyId,
+    fromWxid: reply.fromWxid,
+    quotedWxMsgId: reply.quotedWxMsgId,
+    wxMsgId: reply.wxMsgId,
+    quoteText: reply.quoteText || '',
+  };
+  const retryDelays = [0, 400, 900];
+  for (const delayMs of retryDelays) {
+    if (delayMs > 0) await sleep(delayMs);
+    const pendingResult = await runtime.persist(
+      'pendingReply.get',
+      payload,
+      { idempotencyKey: `pending-get:${reply.replyId}:${delayMs}`, traceId },
+    );
+    const pending = pendingResult.data?.pending;
+    if (pending) return pending;
+  }
+  return null;
+}
+
 async function sendFailureReceiptWithDedup({
   replyId,
   pending,
@@ -153,13 +179,10 @@ runtime.onTopic('wechat.reply.received', async (payload, meta) => {
 
   const reply = data.reply;
 
-  const pendingResult = await runtime.persist(
-    'pendingReply.get',
-    { replyId: reply.replyId },
-    { idempotencyKey: `pending-get:${reply.replyId}`, traceId },
-  );
-
-  const pending = pendingResult.data?.pending;
+  const pending = await loadPendingReply(reply, traceId);
+  if (pending?.recreated) {
+    runtime.log('info', `pending reply #${reply.replyId} restored from notification context`, { traceId });
+  }
   if (!pending) {
     runtime.log('error', `pending reply not found replyId=${reply.replyId}`, { traceId });
     await runtime.persist(

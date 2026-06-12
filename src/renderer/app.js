@@ -13,6 +13,7 @@ const state = {
   lastMessage: '',
   runtimeHealth: null,
   lastWatchdogFeedAt: null,
+  lastWorkerHeartbeatAt: null,
   runtimeRunning: false,
 };
 
@@ -82,6 +83,7 @@ const els = {
 let toastTimer = null;
 let statusPollTimer = null;
 let progressDisplayTimer = null;
+let progressRefreshTick = 0;
 let unsubscribeRuntimeStatus = null;
 let unsubscribeRuntimeLog = null;
 let unsubscribeRuntimeStats = null;
@@ -89,25 +91,30 @@ let unsubscribeRelayLog = null;
 const activityDedupSeen = new Map();
 const ACTIVITY_DEDUP_MS = 3000;
 const ACTIVITY_MAX_ITEMS = 100;
+const WATCHDOG_NORMAL_MS = 15000;
+const WATCHDOG_WARN_MS = 25000;
 
 function formatAgeSec(ageMs) {
   if (ageMs == null || !Number.isFinite(ageMs)) return '';
   return `${Math.max(0, Math.floor(ageMs / 1000))} 秒前`;
 }
 
-function buildWorkerProgressLine(lastWatchdogFeedAt) {
-  if (!lastWatchdogFeedAt) {
+function buildWorkerProgressLine(lastWatchdogFeedAt, lastWorkerHeartbeatAt) {
+  const feed = Number(lastWatchdogFeedAt || 0);
+  const worker = Number(lastWorkerHeartbeatAt || 0);
+  const effectiveFeedAt = feed && worker ? Math.max(feed, worker) : (feed || worker || 0);
+  if (!effectiveFeedAt) {
     return { text: '● worker 等待心跳', status: 'unknown' };
   }
-  const ageMs = Date.now() - Number(lastWatchdogFeedAt);
-  if (ageMs <= 90000) {
+  const ageMs = Date.now() - effectiveFeedAt;
+  if (ageMs <= WATCHDOG_NORMAL_MS) {
     return {
       text: `● worker 正常 · 看门狗 ${formatAgeSec(ageMs)} ✓`,
       status: 'done',
       showCheck: true,
     };
   }
-  if (ageMs <= 150000) {
+  if (ageMs <= WATCHDOG_WARN_MS) {
     return {
       text: `● worker 心跳延迟 · 上次看门狗 ${formatAgeSec(ageMs)}`,
       status: 'warn',
@@ -119,9 +126,9 @@ function buildWorkerProgressLine(lastWatchdogFeedAt) {
   };
 }
 
-function mergeProgressWithWorkerAge(progressLines, lastWatchdogFeedAt) {
+function mergeProgressWithWorkerAge(progressLines, lastWatchdogFeedAt, lastWorkerHeartbeatAt) {
   const lines = Array.isArray(progressLines) ? progressLines : [];
-  const workerLine = buildWorkerProgressLine(lastWatchdogFeedAt);
+  const workerLine = buildWorkerProgressLine(lastWatchdogFeedAt, lastWorkerHeartbeatAt);
   return lines.map((line) => (
     line.key === 'worker'
       ? { ...line, text: workerLine.text, status: workerLine.status, showCheck: workerLine.showCheck === true }
@@ -132,9 +139,14 @@ function mergeProgressWithWorkerAge(progressLines, lastWatchdogFeedAt) {
 function applyRuntimeHealth(health, runtimeStatus = {}) {
   state.runtimeHealth = health || null;
   state.lastWatchdogFeedAt = runtimeStatus.lastWatchdogFeedAt || health?.lastWatchdogFeedAt || null;
+  state.lastWorkerHeartbeatAt = runtimeStatus.lastWorkerHeartbeatAt || health?.lastWorkerHeartbeatAt || null;
   state.runtimeRunning = health?.relayRunning === true;
   if (health?.progressLines?.length) {
-    state.progressSteps = mergeProgressWithWorkerAge(health.progressLines, state.lastWatchdogFeedAt);
+    state.progressSteps = mergeProgressWithWorkerAge(
+      health.progressLines,
+      state.lastWatchdogFeedAt,
+      state.lastWorkerHeartbeatAt,
+    );
   }
 }
 
@@ -144,9 +156,19 @@ function isRoutineHealthActivity(text = '') {
 
 function startProgressDisplayTimer() {
   stopProgressDisplayTimer();
-  progressDisplayTimer = setInterval(() => {
+  progressRefreshTick = 0;
+  progressDisplayTimer = setInterval(async () => {
     if (!state.runtimeRunning || !state.runtimeHealth?.progressLines?.length) return;
-    state.progressSteps = mergeProgressWithWorkerAge(state.runtimeHealth.progressLines, state.lastWatchdogFeedAt);
+    progressRefreshTick += 1;
+    if (progressRefreshTick % 3 === 0) {
+      await refreshBackendStatus();
+    } else {
+      state.progressSteps = mergeProgressWithWorkerAge(
+        state.runtimeHealth.progressLines,
+        state.lastWatchdogFeedAt,
+        state.lastWorkerHeartbeatAt,
+      );
+    }
     renderProgress();
   }, 1000);
 }
@@ -827,6 +849,7 @@ async function handleStopRelay() {
   state.runtimeHealth = null;
   state.runtimeRunning = false;
   state.lastWatchdogFeedAt = null;
+  state.lastWorkerHeartbeatAt = null;
   state.progressSteps = [];
   addActivity(result.ok ? '中转已停止' : '停止中转失败');
   renderAll();

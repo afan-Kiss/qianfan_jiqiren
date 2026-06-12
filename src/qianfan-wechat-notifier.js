@@ -78,6 +78,18 @@ function formatTargetLabel(target) {
   return `${target.name} ${target.wechatNo} ${target.wxid}`;
 }
 
+const NOTICE_DASH = '┈';
+const NOTICE_WIDTH = 20;
+
+function noticeDashedLine(label = '') {
+  const text = String(label || '').trim();
+  if (!text) return NOTICE_DASH.repeat(NOTICE_WIDTH);
+  const gap = Math.max(0, NOTICE_WIDTH - text.length - 2);
+  const left = Math.floor(gap / 2);
+  const right = gap - left;
+  return `${NOTICE_DASH.repeat(left)} ${text} ${NOTICE_DASH.repeat(right)}`;
+}
+
 function formatWechatNotice(replyId, merged) {
   const uniqueTexts = [];
   const seen = new Set();
@@ -87,16 +99,31 @@ function formatWechatNotice(replyId, merged) {
     seen.add(block);
     uniqueTexts.push(block);
   }
-  const lines = [
+
+  const body = [
+    noticeDashedLine(),
     `【千帆待回复 #${replyId}】`,
-    `店铺：${merged.shopTitle}`,
-    `买家：${merged.buyerNick || '买家'}`,
-    `时间：${formatTime(merged.createAt)}`,
-    '消息：',
+    '',
+    `店铺  ${merged.shopTitle}`,
+    `买家  ${merged.buyerNick || '买家'}`,
+    `时间  ${formatTime(merged.createAt)}`,
+    '',
+    '消息',
   ];
-  if (uniqueTexts.length === 1) lines.push(uniqueTexts[0]);
-  else uniqueTexts.forEach((t, i) => lines.push(`${i + 1}. ${t}`));
-  return lines.join('\n');
+
+  if (uniqueTexts.length === 1) {
+    body.push(uniqueTexts[0]);
+  } else {
+    uniqueTexts.forEach((t, i) => body.push(`${i + 1}. ${t}`));
+  }
+
+  body.push(
+    '',
+    noticeDashedLine('引用本消息回复'),
+    noticeDashedLine(),
+  );
+
+  return body.join('\n');
 }
 
 function isPendingInMergeBucket(message) {

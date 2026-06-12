@@ -36,6 +36,8 @@ async function parseWechatReplyContent({ parsed, body }) {
         mode: reply.mode,
         wxMsgId,
         fromWxid: parsed.from,
+        quotedWxMsgId: reply.quotedWxMsgId || '',
+        quoteText: reply.quote?.quoteText || '',
         reason: reply.reason,
       },
     });
@@ -70,7 +72,12 @@ async function parseWechatReplyEvent({ parsed, body }) {
       return ok({ kind: 'duplicate', replyId: reply.replyId });
     }
 
-    const pending = dataStore.findPendingByReplyId(reply.replyId);
+    const pending = dataStore.resolvePendingReply({
+      replyId: reply.replyId,
+      fromWxid: parsed.from,
+      quotedWxMsgId: reply.quotedWxMsgId,
+      wxMsgId,
+    });
     if (!pending) {
       return ok({ kind: 'pending_not_found', replyId: reply.replyId, reply });
     }
