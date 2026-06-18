@@ -1,11 +1,12 @@
 const config = require('../wechat/wxbot-new-config');
 const { sendWxText } = require('../wechat-send-api');
-const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextForSend } = require('../qianfan-ws-bridge');
+const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextForSend, isBridgeCdpReady } = require('../qianfan-ws-bridge');
+const { isBuyerListenerActive } = require('./legacy-qianfan-listener-adapter');
 const { withTimeout } = require('../cdp-timeout');
 const { ok, fail } = require('./adapter-result');
 const { println } = require('../utils');
 
-const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 55000;
+const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 36000;
 const isDistributed = () => process.env.QIANFAN_DISTRIBUTED_RUNTIME === '1';
 
 function formatQianfanSendErrorMessage(message) {
@@ -72,6 +73,15 @@ async function sendQianfanReplyRequest(request = {}) {
         await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
       }
       return fail(new Error(reason), 'SHOP_NOT_ATTACHED');
+    }
+
+    const bridge = findBridgeByShopTitle(pending.shopTitle);
+    if (!isBuyerListenerActive() || !isBridgeCdpReady(bridge)) {
+      const reason = '千帆尚未就绪，请稍候再引用回复';
+      if (!isDistributed()) {
+        await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
+      }
+      return fail(new Error(reason), 'LISTENER_NOT_READY');
     }
 
     try {

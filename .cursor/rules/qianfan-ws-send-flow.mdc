@@ -1,0 +1,57 @@
+---
+description: 千帆发送主路径 WS 优先；断链时 UI 探针饭饭唤醒 WS 后 WS 重试
+globs: src/qianfan-*.js,src/adapters/legacy-qianfan*.js,scripts/test-*.js
+alwaysApply: true
+---
+
+# 千帆发送流程（WS 优先 + 分层发送 + UI 探针恢复）
+
+## 主路径（对客户 / 对买家的真实回复）
+
+1. **始终先用 WS 发送**（仅 `page_ws` / `page_helper`，**跳过 `cdp_ws`**——千帆 DevTools 无 `Network.sendWebSocketFrame`）。
+2. 客户回复内容 **只走 WS**，**禁止**用 UI 输入框把正文投递给客户（包括饭饭作为测试买家时，正文也不能走 UI 投递）。
+
+## 发送分层（`sendPayloadToImpaas`，发送段预算 ≤28s）
+
+| 阶段 | 条件 | 行为 | 预算 |
+|------|------|------|------|
+| **Phase A Fast** | 常态 | `installWsHook` → `probePageImpaasWs` → `page_ws` | ~0–2s |
+| **Phase B QuickWake** | A 失败 | **单次**轻量 CDP 重连（1.2s + 可选 reconnect + 4.5s）→ 再试 `page_ws` | ~5–6s |
+| **Phase C 饭饭探针** | A+B 仍失败 **且** 页面接入已超过 **30s** | UI 探针饭饭「亲亲」→ 捕获 WS → WS 重试原消息 | ~8–12s |
+
+- **刚打开（接入 <30s）**：只走 WS 直发 + QuickWake，**不探针饭饭**（避免误发亲亲）。
+- **跑久了发送失败**：就是你说的逻辑——饭饭探针 → 捕获 WS → WS 重发买家正文。
+- 同店 UI 探针 **60s 冷却**，避免连续失败时饭饭收多条亲亲。
+
+## WS 断链恢复（长时间无动静 / impaas WS 不可用）
+
+**仅 Phase C** 触发，顺序固定：
+
+1. 判定：`lastWsActivity` 超过 **120s** 且 `probePageImpaasWs` 为假，且未命中探针冷却。
+2. **开启 WS 捕获**（CDP Network + hook）。
+3. **UI 会话探针**：仅向 **`wsWakeBuyerNick`（默认「饭饭」）** 发 **`wsWakeText`（默认「亲亲」）**——这是唤醒 WS，不是客户回复。
+4. **捕获**探针触发的最新 `/message/send` WS（`requestId` / 页面 socket）。
+5. **再用 WS** 重试刚才因断链失败的那条消息（发给原目标买家的 `appCid` + 原 payload）。
+
+## 禁止事项
+
+- **禁止** UI 会话参与对客户的回复投递（不得 `tryDeliverViaUi` / 不得把引用回复正文通过 UI 发给买家）。
+- **禁止** UI 探针发给饭饭以外的任何人。
+- **禁止** 每次 WS 失败都立刻 UI 探针（含刚打开、预热中场景）。
+- **禁止** 在发送路径使用 `cdp_ws`（无效且浪费时间）。
+- 探针消息（亲亲）与客户回复正文必须分离；探针成功后 **必须 WS 重试原消息**，不能认为 UI 探针等于回复成功。
+
+## 配置
+
+- `qianfanDebug.wsWakeBuyerNick`：探针买家，默认 `饭饭`
+- `qianfanDebug.wsWakeText`：探针文案，默认 `亲亲`
+- `qianfanDebug.sendOnlyBuyerNick`：测试白名单（与发送主路径独立；正式对客前设为空）
+
+## 关键实现位置
+
+- `sendPayloadToImpaas`：Phase A → B → C（IdleProbe 有门槛 + 冷却）
+- `prepareShopSendBridge`：新接入店铺最多轮询 3s WS 就绪（无固定 2.5s sleep）
+- `registerQianfanWsBridge`：重连时保留 `lastWsFrameAt`
+- `recoverImpaasWsViaUiProbe`：仅 UI 探针饭饭 + 捕获 WS
+- `sendBuyerTextViaUi`：只允许探针/测试脚本调用，**不得**作为客户回复兜底
+- `legacy-qianfan-sender-adapter`：listener 未就绪快速失败；发送总超时 **36s**（28s 发送段 + 8s ACK）

@@ -1,0 +1,34 @@
+---
+description: 千帆发送白名单——仅允许向「饭饭」发消息
+globs: src/qianfan-*.js,src/adapters/legacy-qianfan*.js,scripts/test-*.js
+alwaysApply: true
+---
+
+# 千帆发送白名单（仅饭饭）
+
+## 硬性规则
+
+- **只允许**向买家昵称 **「饭饭」** 发送千帆消息（WS / UI 输入框 / 探针 / 测试脚本）。
+- **禁止**向任何其他买家主动发送消息，包括：
+  - 测试脚本默认目标买家
+  - UI 会话探针误发到真实买家
+  - WS 恢复流程中向非饭饭买家投递
+
+## 代码约定
+
+- 所有发送入口必须经 `assertSendAllowedForBuyer()`（`src/qianfan-send-guard.js`）校验：
+  - `sendQianfanTextReply`
+  - `sendBuyerTextViaUi`
+- UI WS 探针目标使用 `wsWakeBuyerNick`（默认「饭饭」），不得改为真实买家。
+- **UI 仅用于探针唤醒 WS**，不得用于向客户投递回复正文（详见 `qianfan-ws-send-flow.mdc`）。
+- 新增测试脚本默认 `--buyer` / `--target` 必须是「饭饭」。
+
+## 正式对客回复
+
+上线对真实买家回复前，在 `config.wxbot-new.json` 的 `qianfanDebug` 中设置：
+
+```json
+"sendOnlyBuyerNick": ""
+```
+
+或环境变量 `QIANFAN_SEND_ONLY_BUYER_NICK=`（空字符串）关闭白名单。

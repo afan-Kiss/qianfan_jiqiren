@@ -27,7 +27,7 @@ const {
 const { sendQianfanTextReply, findBridgeByShopTitle } = require('./qianfan-ws-bridge');
 const { withTimeout } = require('./cdp-timeout');
 
-const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 55000;
+const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 36000;
 
 function debugLogPath() {
   const d = new Date();
@@ -208,6 +208,7 @@ function createWechatToQianfanDispatcher() {
           appCid: pending.appCid,
           receiverAppUids,
           text: replyText,
+          buyerNick: pending.buyerNick || '',
         }),
         QIANFAN_SEND_TOTAL_TIMEOUT_MS,
         'sendQianfanTextReply'

@@ -43,6 +43,7 @@ const {
   noteBuyerAppCidOnBridge,
   registerShopReconnectWake,
   unregisterShopReconnectWake,
+  prewarmShopWsSend,
 } = require('./qianfan-ws-bridge');
 const { println } = require('./utils');
 const {
@@ -320,6 +321,9 @@ async function attachPage(pageInfo, handlers, state) {
       registerBuyerMessageHandler(shopTitle, state.onWsBuyerMessages);
     }
     println(`[千帆] 已注册发送桥接：${shopTitle}`);
+    void prewarmShopWsSend(shopTitle).catch((err) => {
+      println(`[千帆] 店铺 ${shopTitle} WS预热失败: ${err.message || err}`);
+    });
 
     const pendingHttpResponses = new Map();
 

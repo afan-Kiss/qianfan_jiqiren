@@ -14,6 +14,9 @@
     "expectedShopCount": 4,
     "waitTimeoutMs": 60000,
     "checkIntervalMs": 2000,
-    "closeWaitMs": 2000
+    "closeWaitMs": 2000,
+    "wsWakeBuyerNick": "饭饭",
+    "wsWakeText": "亲亲",
+    "sendOnlyBuyerNick": "饭饭"
   }
 }

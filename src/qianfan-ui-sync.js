@@ -3,14 +3,18 @@
  */
 const { extractMessagesFromResponse } = require('./chat-parse');
 const { println } = require('./utils');
+const { assertSendAllowedForBuyer } = require('./qianfan-send-guard');
 const {
   cdpRuntimeEvaluate,
   cdpAddScriptToEvaluateOnNewDocument,
+  cdpPageEnable,
   CDP_EVAL_DEFAULT_MS,
 } = require('./cdp-timeout');
 
 const UI_SYNC_BRIDGE_SCRIPT = `(function(){
-  if (window.__qfUiSyncInstalled) return { ok: true, already: true };
+  if (window.__qfUiSyncInstalled && window.__qfUiSync && window.__qfUiSync.sendTextMessage) {
+    return { ok: true, already: true };
+  }
   window.__qfUiSyncInstalled = true;
 
   function sleep(ms) {
@@ -59,6 +63,10 @@ const UI_SYNC_BRIDGE_SCRIPT = `(function(){
     return matched;
   }
 
+  function normText(s) {
+    return String(s || '').replace(/\\s+/g, ' ').trim();
+  }
+
   function findConversationByAppCid(appCid) {
     if (!appCid) return null;
     var list = findConversationNodes();
@@ -69,10 +77,36 @@ const UI_SYNC_BRIDGE_SCRIPT = `(function(){
     return hit || null;
   }
 
-  function findAnotherConversation(appCid) {
+  function findConversationByBuyerNick(buyerNick) {
+    var nick = normText(buyerNick);
+    if (!nick) return null;
+    var items = document.querySelectorAll('.chat-item, [class*="chat-item"]');
+    for (var i = 0; i < items.length; i++) {
+      var el = items[i];
+      var t = normText(el.textContent);
+      if (!t) continue;
+      if (t.indexOf(nick) === 0) return el;
+    }
+    return null;
+  }
+
+  function findConversationTarget(appCid, buyerNick) {
+    return findConversationByAppCid(appCid) || findConversationByBuyerNick(buyerNick) || null;
+  }
+
+  function findAnotherConversation(appCid, buyerNick) {
     var list = findConversationNodes();
     for (var i = 0; i < list.length; i++) {
       if (list[i].appCid && list[i].appCid !== appCid) return list[i].el;
+    }
+    var nick = normText(buyerNick);
+    var items = document.querySelectorAll('.chat-item, [class*="chat-item"]');
+    for (var j = 0; j < items.length; j++) {
+      var el = items[j];
+      var t = normText(el.textContent);
+      if (!t) continue;
+      if (nick && t.indexOf(nick) === 0) continue;
+      return el;
     }
     return null;
   }
@@ -170,10 +204,10 @@ const UI_SYNC_BRIDGE_SCRIPT = `(function(){
         return { ok: false, error: String(e.message || e) };
       }
     },
-    reselectConversation: async function(appCid) {
-      var target = findConversationByAppCid(appCid);
-      if (!target) return { clicked: false, reason: 'row_not_found' };
-      var other = findAnotherConversation(appCid);
+    reselectConversation: async function(appCid, buyerNick) {
+      var target = findConversationTarget(appCid, buyerNick);
+      if (!target) return { clicked: false, reason: 'row_not_found', appCid: appCid || '', buyerNick: buyerNick || '' };
+      var other = findAnotherConversation(appCid, buyerNick);
       if (other) {
         safeClick(other);
         await sleep(280);
@@ -181,7 +215,7 @@ const UI_SYNC_BRIDGE_SCRIPT = `(function(){
       safeClick(target);
       await sleep(320);
       tryDispatchStoreRefresh(appCid);
-      return { clicked: true, reselected: !!other };
+      return { clicked: true, reselected: !!other, preview: normText(target.textContent).slice(0, 60) };
     },
     injectLocalEcho: injectLocalEcho,
     hasRealMessageInDom: function(appCid, msgId, text) {
@@ -192,6 +226,93 @@ const UI_SYNC_BRIDGE_SCRIPT = `(function(){
       var root = findMessageListContainer();
       removeStaleLocalEcho(root, '', msgId, text);
       return true;
+    },
+    findChatInput: function() {
+      var ta = document.querySelector('#jarvis-reply-textarea, textarea.reply-textarea');
+      if (ta && ta.offsetParent !== null) return ta;
+      var selectors = [
+        'textarea[placeholder*="Enter"]',
+        'textarea[placeholder*="发送"]',
+        'textarea[placeholder*="消息"]',
+        '[contenteditable="true"][role="textbox"]',
+      ];
+      for (var i = 0; i < selectors.length; i++) {
+        var el = document.querySelector(selectors[i]);
+        if (el && el.offsetParent !== null) return el;
+      }
+      return null;
+    },
+    findSendButton: function() {
+      var btn = Array.from(document.querySelectorAll('button')).find(function(b) {
+        return normText(b.textContent) === '发送';
+      });
+      if (btn) return btn;
+      return document.querySelector('button.d-button.--color-primary, button[class*="send"]');
+    },
+    setInputText: function(el, text) {
+      var val = String(text || '');
+      if (!el || !val) return false;
+      el.focus();
+      el.click();
+      if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+        var setter = Object.getOwnPropertyDescriptor(
+          el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+          'value'
+        );
+        setter = setter && setter.set;
+        if (setter) setter.call(el, val);
+        else el.value = val;
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: val }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+      if (el.isContentEditable) {
+        el.textContent = val;
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: val }));
+        return true;
+      }
+      return false;
+    },
+    pressEnter: function(el) {
+      if (!el) return;
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+    },
+    sendTextMessage: async function(appCid, text, buyerNick) {
+      var msg = String(text || '').trim();
+      if (!msg) return { ok: false, reason: 'empty_text' };
+      var pick = await window.__qfUiSync.reselectConversation(appCid, buyerNick);
+      await sleep(450);
+      var input = window.__qfUiSync.findChatInput();
+      if (!input) return { ok: false, reason: 'input_not_found', clicked: pick.clicked, pick: pick };
+      if (!window.__qfUiSync.setInputText(input, msg)) {
+        return { ok: false, reason: 'input_set_failed', clicked: pick.clicked };
+      }
+      await sleep(200);
+      var btn = window.__qfUiSync.findSendButton();
+      var btnDisabled = btn ? !!btn.disabled : null;
+      if (btn && !btn.disabled) {
+        safeClick(btn);
+      } else if (btn && btn.disabled) {
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: msg }));
+        await sleep(150);
+        if (!btn.disabled) safeClick(btn);
+        else window.__qfUiSync.pressEnter(input);
+      } else {
+        window.__qfUiSync.pressEnter(input);
+      }
+      await sleep(700);
+      if (window.__qfRehookImpaasSockets) window.__qfRehookImpaasSockets();
+      var domVerified = window.__qfUiSync.hasRealMessageInDom(appCid, '', msg);
+      return {
+        ok: domVerified || pick.clicked,
+        method: btn && !btnDisabled ? 'ui_button' : 'ui_enter',
+        clicked: pick.clicked,
+        domVerified: domVerified,
+        inputId: input.id || '',
+        pickPreview: pick.preview || '',
+        sendDisabled: btnDisabled,
+      };
     },
   };
 
@@ -369,8 +490,55 @@ async function syncQianfanConversationUi(ctx) {
   return { ok, apiConfirmed, reselected, localEcho: false, visibleInDom, directDomMutationUsed: false };
 }
 
+/**
+ * UI 输入框发送（CDP）。仅用于 WS 探针唤醒（饭饭 + 亲亲）或测试脚本。
+ * 不得作为对客户/买家的回复投递路径。
+ */
+async function sendBuyerTextViaUi(client, { appCid, text, buyerNick }) {
+  if (!client?.Runtime) return { ok: false, reason: 'no_runtime' };
+  const cid = String(appCid || '').trim();
+  const msg = String(text || '').trim();
+  const nick = String(buyerNick || '').trim();
+  if (!msg) return { ok: false, reason: 'missing_text' };
+  if (!cid && !nick) return { ok: false, reason: 'missing_target' };
+  assertSendAllowedForBuyer(nick, 'sendBuyerTextViaUi');
+
+  try {
+    if (client.Page) {
+      await cdpPageEnable(client.Page);
+      await client.Page.bringToFront();
+      println(`[千帆发送] 已将千帆页面置前台 shop=${nick || cid}`);
+    }
+  } catch (err) {
+    println(`[千帆发送] bringToFront 失败：${err.message || err}`);
+  }
+
+  await installUiSyncBridge(client);
+  const result = await cdpRuntimeEvaluate(
+    client.Runtime,
+    {
+      expression: `(async function(){
+        var sync = window.__qfUiSync;
+        if (!sync || !sync.sendTextMessage) return { ok: false, reason: 'no_ui_sync' };
+        return await sync.sendTextMessage(${JSON.stringify(cid)}, ${JSON.stringify(msg)}, ${JSON.stringify(nick)});
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    },
+    25000
+  );
+  const value = result?.result?.value || { ok: false, reason: 'eval_fail' };
+  if (value.ok) {
+    println(
+      `[千帆发送] UI 输入框已发送 appCid=${cid} method=${value.method || 'ui'} domVerified=${Boolean(value.domVerified)}`
+    );
+  }
+  return value;
+}
+
 module.exports = {
   syncQianfanConversationUi,
   installUiSyncBridge,
   patchMessageListBody,
+  sendBuyerTextViaUi,
 };

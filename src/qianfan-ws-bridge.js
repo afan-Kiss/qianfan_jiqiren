@@ -51,7 +51,8 @@ const {
   isValidAppCid,
 } = require('./qf-send-payload');
 const { getSessionContext, getReceiverAppUids, findReceiverCacheForShop, buyerNickMatches, rememberReceiverAppUids, saveSessionContext, extractReceiverAppUidsFromMessage } = require('./qianfan-data-store');
-const { installUiSyncBridge } = require('./qianfan-ui-sync');
+const { installUiSyncBridge, sendBuyerTextViaUi } = require('./qianfan-ui-sync');
+const { assertSendAllowedForBuyer } = require('./qianfan-send-guard');
 const { triggerNativeSyncAfterAck, installNativeSyncBridge } = require('./qianfan-native-sync');
 const { println } = require('./utils');
 const { cdpRuntimeEvaluate, withTimeout, cdpAddScriptToEvaluateOnNewDocument, cdpNetworkEnable, cdpNetworkDisable, cdpNetworkSendWebSocketFrame } = require('./cdp-timeout');
@@ -59,10 +60,20 @@ const { logBotSendLifecycle, summarizePayload } = require('./capture/bot-send-de
 
 const bridges = new Map();
 const shopWakeReconnect = new Map();
+const shopProbeCooldown = new Map();
 const IMPAAS_WAKE_WAIT_MS = 1200;
 const IMPAAS_RECONNECT_WAIT_MS = 4500;
-const IMPAAS_SEND_RETRY_ROUNDS = 3;
+const IMPAAS_SEND_RETRY_ROUNDS = 2;
+const IMPAAS_QUICK_WAKE_ROUNDS = 1;
 const IMPAAS_SESSION_FRESH_MS = 120000;
+const MANUAL_SEND_FRESH_MS = 300000;
+const WS_WAKE_CAPTURE_WAIT_MS = 8000;
+const PROBE_COOLDOWN_MS = 60000;
+const WS_SEND_READY_POLL_MS = 300;
+const WS_SEND_READY_POLL_ROUNDS = 10;
+const BRIDGE_YOUNG_MS = 15000;
+const PROBE_MIN_BRIDGE_AGE_MS = 30000;
+const SEND_PAYLOAD_BUDGET_MS = 28000;
 const ACK_TIMEOUT_MS = 8000;
 const ECHO_VERIFY_MS = 10000;
 const UI_SYNC_TIMEOUT_MS = 12000;
@@ -289,11 +300,37 @@ function captureManualSend(bridge, parsed, requestId) {
     receiverAppUids: body.receiverAppUids,
     payload: parsed,
     bodySummary: summarizeBody(body),
+    capturedAt: Date.now(),
   };
 
   bridge.lastManualSendByAppCid.set(appCid, sample);
   bridge.lastManualSendAny = sample;
   writeManualSendSample(sample);
+  println(
+    `[千帆] 已捕获手动发送 WS：店铺=${sample.shopTitle} appCid=${appCid} requestId=${requestId}`
+  );
+}
+
+function getRecentManualSendSample(bridge, appCid) {
+  if (!bridge) return null;
+  const cid = String(appCid || '').trim();
+  const candidates = [];
+  if (cid) {
+    const exact = bridge.lastManualSendByAppCid.get(cid);
+    if (exact) candidates.push(exact);
+  }
+  if (bridge.lastManualSendAny) candidates.push(bridge.lastManualSendAny);
+
+  const now = Date.now();
+  for (const sample of candidates) {
+    if (!sample?.requestId) continue;
+    const sess = bridge.wsSessions.get(sample.requestId);
+    const capturedAt = Number(sample.capturedAt || sess?.lastManualSendAt || sess?.lastActivityAt || 0);
+    if (capturedAt && now - capturedAt <= MANUAL_SEND_FRESH_MS) {
+      return { ...sample, capturedAt, session: sess || null };
+    }
+  }
+  return null;
 }
 
 function noteWsFrame(bridge, requestId, parsed, direction) {
@@ -868,6 +905,15 @@ async function prepareShopSendBridge(bridge, shopTitle, appCid) {
   if (!isBridgeCdpReady(bridge)) {
     throw new Error(`店铺「${shopLabel}」CDP 连接不可用，请确认千帆工作台页面未关闭`);
   }
+  const bridgeAgeMs = Date.now() - Number(bridge.connectedAt || 0);
+  if (bridgeAgeMs < BRIDGE_YOUNG_MS && !(await probePageImpaasWs(bridge)).ok) {
+    println(`[千帆发送] ${shopLabel} 新接入店铺，轮询 WS 就绪...`);
+    await installWsHook(bridge.client);
+    for (let i = 0; i < WS_SEND_READY_POLL_ROUNDS; i += 1) {
+      if ((await probePageImpaasWs(bridge)).ok) break;
+      await new Promise((r) => setTimeout(r, WS_SEND_READY_POLL_MS));
+    }
+  }
   noteBuyerAppCidOnBridge(shopTitle, appCid);
   return findBridgeByShopTitle(shopTitle) || bridge;
 }
@@ -949,7 +995,12 @@ async function ensureImpaasWsReady(bridge, appCid, options = {}) {
   if ((await probePageImpaasWs(bridge)).ok) return true;
 
   const shopLabel = normalizeShopKey(bridge.shopTitle);
-  const rounds = options.aggressive ? IMPAAS_SEND_RETRY_ROUNDS : 2;
+  const rounds =
+    Number(options.rounds) > 0
+      ? Number(options.rounds)
+      : options.aggressive
+        ? IMPAAS_SEND_RETRY_ROUNDS
+        : IMPAAS_QUICK_WAKE_ROUNDS;
 
   for (let round = 0; round < rounds; round += 1) {
     if (await hasLiveImpaasWs(bridge)) return true;
@@ -1090,14 +1141,21 @@ async function installWsHook(client) {
   return true;
 }
 
-async function sendViaCdpNetwork(bridge, payloadStr, appCid) {
+async function sendViaCdpNetwork(bridge, payloadStr, appCid, options = {}) {
   if (!isBridgeCdpReady(bridge) || !bridge.client?.Network) {
     return { ok: false, reason: 'cdp_not_ready' };
   }
 
+  const preferredRequestId = String(options.preferredRequestId || '').trim();
   const ranked = listSendCandidateSessions(bridge, appCid);
+  const ordered = preferredRequestId
+    ? [
+        ...ranked.filter((s) => s.requestId === preferredRequestId),
+        ...ranked.filter((s) => s.requestId !== preferredRequestId),
+      ]
+    : ranked;
 
-  for (const sess of ranked) {
+  for (const sess of ordered) {
     try {
       await cdpNetworkSendWebSocketFrame(bridge.client.Network, {
         requestId: sess.requestId,
@@ -1106,11 +1164,11 @@ async function sendViaCdpNetwork(bridge, payloadStr, appCid) {
       });
       return {
         ok: true,
-        method: 'cdp_ws',
+        method: preferredRequestId && sess.requestId === preferredRequestId ? 'cdp_ws_manual' : 'cdp_ws',
         url: sess.url || bridge.wsUrls.get(sess.requestId) || '',
         requestId: sess.requestId,
         rank: scoreSendSession(sess, appCid),
-        count: ranked.length,
+        count: ordered.length,
       };
     } catch (err) {
       println(
@@ -1119,7 +1177,140 @@ async function sendViaCdpNetwork(bridge, payloadStr, appCid) {
     }
   }
 
-  return { ok: false, reason: 'cdp_ws_send_failed', count: ranked.length };
+  return { ok: false, reason: 'cdp_ws_send_failed', count: ordered.length };
+}
+
+async function trySendWithRecentManualWs(bridge, payloadStr, appCid) {
+  const manual = getRecentManualSendSample(bridge, appCid);
+  if (!manual?.requestId) return null;
+
+  println(
+    `[千帆发送] 复用最近 WS 样本 requestId=${manual.requestId} appCid=${manual.appCid || appCid}`
+  );
+  const sent = await sendViaPageRuntime(bridge.client, payloadStr, appCid);
+  return sent.ok ? sent : null;
+}
+
+function getWsWakeProbeConfig() {
+  const qd = config.qianfanDebug || {};
+  const buyerNick = String(qd.wsWakeBuyerNick || '饭饭').trim() || '饭饭';
+  assertSendAllowedForBuyer(buyerNick, 'ws_wake_probe_config');
+  return {
+    buyerNick,
+    text: String(qd.wsWakeText || '亲亲').trim() || '亲亲',
+  };
+}
+
+async function waitForFreshManualSendCapture(bridge, sinceMs, timeoutMs = WS_WAKE_CAPTURE_WAIT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const samples = [];
+    if (bridge.lastManualSendAny) samples.push(bridge.lastManualSendAny);
+    for (const sample of bridge.lastManualSendByAppCid.values()) {
+      samples.push(sample);
+    }
+    for (const sample of samples) {
+      if (!sample?.requestId) continue;
+      const capturedAt = Number(sample.capturedAt || 0);
+      if (capturedAt >= sinceMs) {
+        return {
+          ...sample,
+          capturedAt,
+          session: bridge.wsSessions.get(sample.requestId) || null,
+        };
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return null;
+}
+
+async function beginWsCaptureForRecovery(bridge) {
+  if (!isBridgeCdpReady(bridge)) return false;
+  try {
+    if (bridge.client?.Network) {
+      await cdpNetworkEnable(bridge.client.Network);
+    }
+    await installWsHook(bridge.client);
+    await installUiSyncBridge(bridge.client);
+    return true;
+  } catch (err) {
+    println(`[千帆发送] 开启 WS 捕获失败：${err.message || err}`);
+    return false;
+  }
+}
+
+async function recoverImpaasWsViaUiProbe(bridge, shopTitle) {
+  const shopLabel = normalizeShopKey(shopTitle);
+  const wake = getWsWakeProbeConfig();
+  assertSendAllowedForBuyer(wake.buyerNick, 'ui_ws_probe');
+  if (!isBridgeCdpReady(bridge)) {
+    return { ok: false, reason: 'cdp_not_ready' };
+  }
+
+  println(
+    `[千帆发送] ${shopLabel} WS 不可用：从此刻开启捕获 → UI 向「${wake.buyerNick}」探针发消息 → 抓到 WS 后重试原买家`
+  );
+
+  const captureReady = await beginWsCaptureForRecovery(bridge);
+  if (!captureReady) {
+    return { ok: false, reason: 'capture_not_ready' };
+  }
+
+  const captureStartedAt = Date.now();
+  const uiSent = await sendBuyerTextViaUi(bridge.client, {
+    appCid: '',
+    text: wake.text,
+    buyerNick: wake.buyerNick,
+  });
+  if (!uiSent.ok) {
+    println(
+      `[千帆发送] ${shopLabel} UI 探针发送失败 buyer=${wake.buyerNick} reason=${uiSent.reason || 'unknown'}`
+    );
+    return { ok: false, reason: uiSent.reason || 'wake_ui_failed' };
+  }
+
+  println(
+    `[千帆发送] ${shopLabel} UI 探针已发送 buyer=${wake.buyerNick} method=${uiSent.method || 'ui'}，等待捕获 /message/send WS...`
+  );
+
+  const captured = await waitForFreshManualSendCapture(bridge, captureStartedAt);
+  if (!captured?.requestId) {
+    println(`[千帆发送] ${shopLabel} 探针后未捕获到新鲜 WS 样本（${WS_WAKE_CAPTURE_WAIT_MS}ms 超时）`);
+    const probed = await probePageImpaasWs(bridge);
+    if (probed.ok) {
+      println(`[千帆发送] ${shopLabel} 探针后页面 WS 已可用，继续重试原买家`);
+      return { ok: true, manual: null, probePageOnly: true };
+    }
+    return { ok: false, reason: 'capture_timeout' };
+  }
+
+  println(
+    `[千帆发送] ${shopLabel} 已捕获探针 WS requestId=${captured.requestId} probeAppCid=${captured.appCid || ''}`
+  );
+  return { ok: true, manual: captured };
+}
+
+async function retryWsSendAfterCapture(bridge, payloadStr, appCid, manual) {
+  if (isBridgeCdpReady(bridge)) {
+    await installWsHook(bridge.client);
+    await cdpRuntimeEvaluate(bridge.client.Runtime, {
+      expression: `(function(){
+        if (window.__qfRehookImpaasSockets) window.__qfRehookImpaasSockets();
+        return true;
+      })()`,
+      returnByValue: true,
+    }).catch(() => null);
+    await new Promise((r) => setTimeout(r, IMPAAS_WAKE_WAIT_MS));
+  }
+
+  const pageSent = await sendViaPageRuntime(bridge.client, payloadStr, appCid);
+  if (pageSent.ok) return pageSent;
+
+  const manualSent = await trySendWithRecentManualWs(bridge, payloadStr, appCid);
+  if (manualSent?.ok) return manualSent;
+
+  return { ok: false, reason: 'no_ws' };
 }
 
 async function sendViaPageRuntime(client, payloadStr, appCid) {
@@ -1164,60 +1355,140 @@ async function sendViaPageRuntime(client, payloadStr, appCid) {
   return { ok: false, reason: 'no_ws' };
 }
 
-async function sendPayloadToImpaas(bridge, shopTitle, payloadStr, appCid) {
-  let currentBridge = bridge;
-  const maxRounds = IMPAAS_SEND_RETRY_ROUNDS;
+function isPastWarmupWindow(bridge) {
+  const connectedAt = Number(bridge?.connectedAt || 0);
+  if (!connectedAt) return false;
+  return Date.now() - connectedAt >= PROBE_MIN_BRIDGE_AGE_MS;
+}
 
-  for (let round = 0; round < maxRounds; round += 1) {
-    if (!isBridgeCdpReady(currentBridge)) {
-      currentBridge = await waitForBridgeCdpReady(shopTitle, IMPAAS_RECONNECT_WAIT_MS) || currentBridge;
-    }
-    if (!isBridgeCdpReady(currentBridge)) {
-      println(`[千帆发送] ${normalizeShopKey(shopTitle)} CDP 未就绪 round=${round + 1}`);
-      if (round + 1 < maxRounds) {
-        await triggerShopReconnect(currentBridge?.shopTitle || shopTitle, 'send_no_ws');
-        await new Promise((r) => setTimeout(r, IMPAAS_WAKE_WAIT_MS));
-      }
-      continue;
-    }
-
-    await installWsHook(currentBridge.client);
-    noteBuyerAppCidOnBridge(currentBridge.shopTitle, appCid);
-    if (appCid && currentBridge.lastMessageListRequest) {
-      await fetchMessageListForAppCid(currentBridge, appCid);
-    }
-
-    let probed = await probePageImpaasWs(currentBridge);
-    if (!probed.ok) {
-      await ensureImpaasWsReady(currentBridge, appCid, { aggressive: round + 1 >= maxRounds });
-      currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
-      await installWsHook(currentBridge.client);
-      probed = await probePageImpaasWs(currentBridge);
-    }
-
-    if (probed.ok) {
-      const pageSent = await sendViaPageRuntime(currentBridge.client, payloadStr, appCid);
-      if (pageSent.ok) return pageSent;
-    }
-
-    const cdpSent = await sendViaCdpNetwork(currentBridge, payloadStr, appCid);
-    if (cdpSent.ok) return cdpSent;
-
-    const sent = await sendViaPageRuntime(currentBridge.client, payloadStr, appCid);
-    if (sent.ok) return sent;
-
-    const candidates = listSendCandidateSessions(currentBridge, appCid);
-    println(
-      `[千帆发送] ${normalizeShopKey(shopTitle)} 发送失败 round=${round + 1} reason=${sent.reason || cdpSent.reason || 'no_ws'} openWs=${probed.count}/${probed.total} cdpSessions=${candidates.length}`
-    );
-
-    if (round + 1 < maxRounds) {
-      await triggerShopReconnect(currentBridge.shopTitle, 'send_no_ws');
-      await new Promise((r) => setTimeout(r, IMPAAS_RECONNECT_WAIT_MS));
-      currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
-    }
+async function prewarmShopWsSend(shopTitle) {
+  let bridge = findBridgeByShopTitle(shopTitle);
+  if (!bridge || !isBridgeCdpReady(bridge)) {
+    return { ok: false, reason: 'no_bridge' };
   }
-  return { ok: false, reason: 'no_ws' };
+  await installWsHook(bridge.client);
+  let probed = await probePageImpaasWs(bridge);
+  if (probed.ok) {
+    println(`[千帆] 店铺 ${shopTitle} WS发送就绪 open=${probed.count}/${probed.total}`);
+    return { ok: true, ...probed };
+  }
+  println(`[千帆] 店铺 ${shopTitle} WS待建立，后台轻量唤醒（不探针饭饭）...`);
+  await ensureImpaasWsReady(bridge, null, { rounds: IMPAAS_QUICK_WAKE_ROUNDS });
+  bridge = findBridgeByShopTitle(shopTitle) || bridge;
+  await installWsHook(bridge.client);
+  probed = await probePageImpaasWs(bridge);
+  if (probed.ok) {
+    println(`[千帆] 店铺 ${shopTitle} WS发送就绪（唤醒后） open=${probed.count}/${probed.total}`);
+  } else {
+    println(`[千帆] 店铺 ${shopTitle} WS仍待建立，首次回复时将再试 QuickWake`);
+  }
+  return { ok: probed.ok, ...probed };
+}
+
+function canRunUiProbe(shopTitle) {
+  const key = normalizeShopKey(shopTitle);
+  const last = shopProbeCooldown.get(key) || 0;
+  return Date.now() - last >= PROBE_COOLDOWN_MS;
+}
+
+function markUiProbeRan(shopTitle) {
+  shopProbeCooldown.set(normalizeShopKey(shopTitle), Date.now());
+}
+
+async function isShopWsSendReady(shopTitle) {
+  const bridge = findBridgeByShopTitle(shopTitle);
+  if (!bridge || !isBridgeCdpReady(bridge)) return false;
+  return (await probePageImpaasWs(bridge)).ok;
+}
+
+async function tryPageWsSend(bridge, payloadStr, appCid) {
+  if (!(await probePageImpaasWs(bridge)).ok) {
+    return { ok: false, reason: 'no_page_ws' };
+  }
+  return sendViaPageRuntime(bridge.client, payloadStr, appCid);
+}
+
+/**
+ * 千帆 /message/send 投递：Fast → QuickWake → IdleProbe（仅空闲断链 + 冷却）。
+ * UI 不参与对客户的回复投递（见 .cursor/rules/qianfan-ws-send-flow.mdc）。
+ */
+async function sendPayloadToImpaas(bridge, shopTitle, payloadStr, appCid, options = {}) {
+  const deadline = Date.now() + SEND_PAYLOAD_BUDGET_MS;
+  const buyerNick = String(options.buyerNick || '').trim();
+  assertSendAllowedForBuyer(buyerNick, 'ws_send');
+  const shopLabel = normalizeShopKey(shopTitle);
+  let currentBridge = bridge;
+
+  const remainingMs = () => Math.max(0, deadline - Date.now());
+
+  if (!isBridgeCdpReady(currentBridge)) {
+    currentBridge =
+      (await waitForBridgeCdpReady(shopTitle, Math.min(IMPAAS_RECONNECT_WAIT_MS, remainingMs()))) ||
+      currentBridge;
+  }
+
+  if (!isBridgeCdpReady(currentBridge)) {
+    return { ok: false, reason: 'cdp_not_ready' };
+  }
+
+  await installWsHook(currentBridge.client);
+  noteBuyerAppCidOnBridge(currentBridge.shopTitle, appCid);
+  if (appCid && currentBridge.lastMessageListRequest) {
+    await fetchMessageListForAppCid(currentBridge, appCid);
+  }
+
+  // Phase A — Fast（0–2s，跳过 cdp_ws）
+  println(`[千帆发送] ${shopLabel} Phase A 快速 WS 发送...`);
+  const manualSent = await trySendWithRecentManualWs(currentBridge, payloadStr, appCid);
+  if (manualSent?.ok) return manualSent;
+
+  let sent = await tryPageWsSend(currentBridge, payloadStr, appCid);
+  if (sent.ok) return sent;
+
+  if (remainingMs() <= 0) return { ok: false, reason: 'send_timeout' };
+
+  // Phase B — QuickWake（单次轻量重连 ~5–6s）
+  println(`[千帆发送] ${shopLabel} Phase B 轻量重连唤醒...`);
+  currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
+  const woke = await ensureImpaasWsReady(currentBridge, appCid, { rounds: IMPAAS_QUICK_WAKE_ROUNDS });
+  if (woke) {
+    currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
+    await installWsHook(currentBridge.client);
+  }
+  sent = await tryPageWsSend(currentBridge, payloadStr, appCid);
+  if (sent.ok) return sent;
+
+  if (remainingMs() <= 0) return { ok: false, reason: 'send_timeout' };
+
+  // Phase C — 运行一段时间后 WS 仍不可用：UI 探针饭饭 → 捕获 → WS 重试
+  currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
+
+  if (!isPastWarmupWindow(currentBridge)) {
+    println(`[千帆发送] ${shopLabel} 刚接入（<${PROBE_MIN_BRIDGE_AGE_MS / 1000}s），跳过 UI 探针，请稍后再试`);
+    return { ok: false, reason: 'ws_warming' };
+  }
+
+  if (!canRunUiProbe(shopTitle)) {
+    println(`[千帆发送] ${shopLabel} UI 探针冷却中（${PROBE_COOLDOWN_MS / 1000}s），跳过`);
+    return { ok: false, reason: 'probe_cooldown' };
+  }
+
+  markUiProbeRan(shopTitle);
+  println(`[千帆发送] ${shopLabel} Phase C 空闲断链 UI 探针恢复...`);
+  const recovered = await recoverImpaasWsViaUiProbe(currentBridge, shopTitle);
+  if (recovered.ok) {
+    currentBridge = findBridgeByShopTitle(shopTitle) || currentBridge;
+    await installWsHook(currentBridge.client);
+    println(`[千帆发送] ${shopLabel} 探针 WS 已捕获，WS 重试原买家消息...`);
+    sent = await retryWsSendAfterCapture(currentBridge, payloadStr, appCid, recovered.manual);
+    if (sent.ok) {
+      println(`[千帆发送] ${shopLabel} 探针恢复后 WS 重试成功 method=${sent.method || 'ws'}`);
+      return sent;
+    }
+    println(`[千帆发送] ${shopLabel} 探针恢复后 WS 重试仍失败 reason=${sent.reason || 'no_ws'}`);
+  }
+
+  return { ok: false, reason: sent?.reason || 'no_ws' };
 }
 
 function findBridgeByShopTitle(shopTitle) {
@@ -1338,7 +1609,7 @@ async function registerQianfanWsBridge(pageInfo, client) {
     cdpReady: true,
     connectedAt: Date.now(),
     lastSeq: prev?.lastSeq || 0,
-    lastWsFrameAt: 0,
+    lastWsFrameAt: prev?.lastWsFrameAt || 0,
     frameListeners: prev?.frameListeners || new Set(),
     buyerMessageHandlers: prev?.buyerMessageHandlers || new Set(),
     httpTemplates: prev?.httpTemplates || new Map(),
@@ -1397,6 +1668,9 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
   bridge = await prepareShopSendBridge(bridge, shopTitle, appCid);
 
   const sessionContext = getSessionContext(shopTitle, appCid);
+  const effectiveBuyerNick = String(buyerNick || sessionContext?.buyerNick || '').trim();
+  assertSendAllowedForBuyer(effectiveBuyerNick, 'sendQianfanTextReply');
+
   let finalReceiverAppUids = [...(receiverAppUids || [])].filter(Boolean);
   if (!finalReceiverAppUids.length && sessionContext?.receiverAppUids?.length) {
     finalReceiverAppUids = [...sessionContext.receiverAppUids];
@@ -1495,13 +1769,23 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
 
   ctx.appCid = appCid;
 
-  const sent = await sendPayloadToImpaas(bridge, shopTitle, built.payloadStr, appCid);
+  const sent = await sendPayloadToImpaas(bridge, shopTitle, built.payloadStr, appCid, {
+    buyerNick: effectiveBuyerNick,
+  });
   bridge = findBridgeByShopTitle(shopTitle) || bridge;
   if (!sent.ok) {
     writeSendDebug({ event: 'send_fail', reason: sent.reason || 'no_ws', ...ctx });
-    throw new Error(
-      `店铺「${shopLabel}」消息未能发出（WS 不可用），请确认该店铺工作台页面已打开，或到千帆手动回复一次`
-    );
+    let msg;
+    if (sent.reason === 'ws_warming') {
+      msg = `店铺「${shopLabel}」千帆 WS 预热中，请 3 秒后再试`;
+    } else if (sent.reason === 'probe_cooldown') {
+      msg = `店铺「${shopLabel}」WS 恢复探针冷却中，请稍后再试或到千帆手动回复一次`;
+    } else if (sent.reason === 'send_timeout') {
+      msg = `店铺「${shopLabel}」千帆发送超时，请到千帆手动确认是否已发出`;
+    } else {
+      msg = `店铺「${shopLabel}」消息未能发出（WS 不可用），请确认该店铺工作台页面已打开，或到千帆手动回复一次`;
+    }
+    throw new Error(msg);
   }
 
   writeSendDebug({
@@ -1830,6 +2114,9 @@ module.exports = {
   registerShopReconnectWake,
   unregisterShopReconnectWake,
   getBridgeWsActivity,
+  isShopWsSendReady,
+  probePageImpaasWs,
+  prewarmShopWsSend,
   fetchHttpTemplate,
   fetchMessageListForAppCid,
   getBridgeActiveAppCids,

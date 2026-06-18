@@ -273,6 +273,14 @@ const qianfanDebug = {
     'sameErrorPrintIntervalMs',
     qianfanDebugFile.sameErrorPrintIntervalMs || 10000
   ),
+  wsWakeBuyerNick: String(qianfanDebugFile.wsWakeBuyerNick || '饭饭').trim(),
+  wsWakeText: String(qianfanDebugFile.wsWakeText || '亲亲').trim() || '亲亲',
+  sendOnlyBuyerNick:
+    process.env.QIANFAN_SEND_ONLY_BUYER_NICK !== undefined
+      ? String(process.env.QIANFAN_SEND_ONLY_BUYER_NICK).trim()
+      : Object.prototype.hasOwnProperty.call(qianfanDebugFile, 'sendOnlyBuyerNick')
+        ? String(qianfanDebugFile.sendOnlyBuyerNick || '').trim()
+        : '饭饭',
   root: ROOT,
 };
 

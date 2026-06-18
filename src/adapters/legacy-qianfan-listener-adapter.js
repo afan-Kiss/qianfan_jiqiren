@@ -96,9 +96,14 @@ async function stopBuyerListener() {
   }
 }
 
+function isBuyerListenerActive() {
+  return listenerHandle != null;
+}
+
 module.exports = {
   prepareQianfanRuntime,
   startBuyerListener,
   stopBuyerListener,
   releaseSeenBuyerMessage,
+  isBuyerListenerActive,
 };
