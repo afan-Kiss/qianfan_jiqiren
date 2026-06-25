@@ -224,6 +224,8 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
       createdAt: Date.now(),
     });
   } else if (!payload.skipped) {
+    const errorCode = String(payload.error?.code || '').trim();
+    const isDegraded = errorCode === 'QIANFAN_DEGRADED';
     const failResult = await handlePersistRequest({
       action: 'qianfanSend.recordFailure',
       data: {
@@ -233,12 +235,23 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
         idempotencyKey: pendingKey,
         wxMsgId: request.wxMsgId,
         reason: payload.error?.message || payload.reason || 'send_failed',
+        errorCode,
+        degraded: isDegraded,
       },
       idempotencyKey: `qianfan-send-fail:${pendingKey}:${Date.now()}`,
       traceId,
       sourceWorker: 'persistence',
       createdAt: Date.now(),
     });
+
+    if (isDegraded) {
+      runtime.log(
+        'info',
+        `qianfan send deferred (degraded) replyId=${replyId} retryAt=${failResult.data?.retryAt || ''}`,
+        { traceId, topic: 'qianfan.send.result' },
+      );
+      return;
+    }
 
     if (failResult.data?.finalFailure) {
       await handlePersistRequest({

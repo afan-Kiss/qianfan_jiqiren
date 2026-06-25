@@ -15,9 +15,14 @@ const FAIL_THRESHOLD = Number(process.env.QIANFAN_BRIDGE_HEALTH_FAIL_THRESHOLD |
 
 const shopFailCounts = new Map();
 const degradedShops = new Map();
+let probeCycleInProgress = false;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isHardHealthFailure(result) {
+  return Array.isArray(result.hardIssues) && result.hardIssues.length > 0;
 }
 
 function isShopQianfanDegraded(shopTitle) {
@@ -44,25 +49,43 @@ function clearShopDegraded(shopTitle) {
 
 async function probeShopHealth(shopTitle) {
   const bridge = findBridgeByShopTitle(shopTitle);
-  const issues = [];
+  const hardIssues = [];
+  const warnings = [];
 
   if (!bridge || !isBridgeCdpReady(bridge)) {
-    issues.push('cdp_not_ready');
-    return { ok: false, issues, wsProbe: { ok: false, count: 0 }, activity: null };
+    hardIssues.push('cdp_not_ready');
+    return {
+      ok: false,
+      hardIssues,
+      warnings,
+      issues: [...hardIssues],
+      wsProbe: { ok: false, count: 0 },
+      activity: null,
+    };
   }
 
   const wsProbe = await probePageImpaasWs(bridge);
-  if (!wsProbe.ok || wsProbe.count <= 0) {
-    issues.push('ws_not_open');
+  const wsOpenCount = Number(wsProbe.count || 0);
+  if (!wsProbe.ok || wsOpenCount <= 0) {
+    hardIssues.push('ws_not_open');
   }
 
   const activity = getBridgeWsActivity(shopTitle);
   const lastFrame = Math.max(activity.lastWsFrameAt || 0, activity.lastActivityAt || 0);
   if (lastFrame > 0 && Date.now() - lastFrame > WS_FRAME_STALE_MS) {
-    issues.push('ws_frame_stale');
+    warnings.push('ws_frame_stale');
   }
 
-  return { ok: issues.length === 0, issues, wsProbe, activity };
+  const ok = hardIssues.length === 0;
+  return {
+    ok,
+    hardIssues,
+    warnings,
+    issues: [...hardIssues, ...warnings],
+    wsProbe,
+    activity,
+    wsOpenCount,
+  };
 }
 
 async function recoverShopHealth(shopTitle, bridge) {
@@ -74,51 +97,72 @@ async function recoverShopHealth(shopTitle, bridge) {
 }
 
 async function runHealthProbeCycle(logFn = () => {}) {
+  if (probeCycleInProgress) {
+    return { skipped: true, shops: 0, degraded: 0, recovered: 0, failed: 0 };
+  }
+
+  probeCycleInProgress = true;
   const shops = listRegisteredShops();
-  const summary = { shops: shops.length, degraded: 0, recovered: 0, failed: 0 };
+  const summary = { shops: shops.length, degraded: 0, recovered: 0, failed: 0, skipped: false };
 
-  for (const shopTitle of shops) {
-    const key = normalizeShopKey(shopTitle);
-    try {
-      const result = await probeShopHealth(shopTitle);
-      if (result.ok) {
-        if (degradedShops.has(key)) {
-          summary.recovered += 1;
-          logFn('info', `qianfan health recovered shop=${shopTitle}`);
+  try {
+    for (const shopTitle of shops) {
+      const key = normalizeShopKey(shopTitle);
+      try {
+        const result = await probeShopHealth(shopTitle);
+
+        if (result.warnings?.length) {
+          logFn(
+            'warn',
+            `qianfan health warn shop=${shopTitle} warnings=${result.warnings.join(',')} wsOpen=${result.wsOpenCount || 0}`,
+          );
         }
-        clearShopDegraded(shopTitle);
-        continue;
-      }
 
-      const fails = (shopFailCounts.get(key) || 0) + 1;
-      shopFailCounts.set(key, fails);
-      summary.failed += 1;
-      logFn(
-        'warn',
-        `qianfan health fail shop=${shopTitle} streak=${fails} issues=${result.issues.join(',')}`,
-      );
-
-      if (fails >= 2 && fails < FAIL_THRESHOLD) {
-        const bridge = findBridgeByShopTitle(shopTitle);
-        await recoverShopHealth(shopTitle, bridge);
-        const after = await probeShopHealth(shopTitle);
-        if (after.ok) {
+        if (result.ok) {
+          if (degradedShops.has(key)) {
+            summary.recovered += 1;
+            logFn('info', `qianfan health recovered shop=${shopTitle}`);
+          }
           clearShopDegraded(shopTitle);
-          summary.recovered += 1;
-          logFn('info', `qianfan health ok after reconnect shop=${shopTitle}`);
           continue;
         }
-      }
 
-      if (fails >= FAIL_THRESHOLD) {
-        setShopDegraded(shopTitle, result.issues.join(','));
-        summary.degraded += 1;
-        logFn('error', `qianfan shop degraded shop=${shopTitle} reason=${result.issues.join(',')}`);
+        if (!isHardHealthFailure(result)) {
+          continue;
+        }
+
+        const fails = (shopFailCounts.get(key) || 0) + 1;
+        shopFailCounts.set(key, fails);
+        summary.failed += 1;
+        logFn(
+          'warn',
+          `qianfan health fail shop=${shopTitle} streak=${fails} hard=${result.hardIssues.join(',')}`,
+        );
+
+        if (fails >= 2 && fails < FAIL_THRESHOLD) {
+          const bridge = findBridgeByShopTitle(shopTitle);
+          await recoverShopHealth(shopTitle, bridge);
+          const after = await probeShopHealth(shopTitle);
+          if (after.ok) {
+            clearShopDegraded(shopTitle);
+            summary.recovered += 1;
+            logFn('info', `qianfan health ok after reconnect shop=${shopTitle}`);
+            continue;
+          }
+        }
+
+        if (fails >= FAIL_THRESHOLD) {
+          setShopDegraded(shopTitle, result.hardIssues.join(','));
+          summary.degraded += 1;
+          logFn('error', `qianfan shop degraded shop=${shopTitle} reason=${result.hardIssues.join(',')}`);
+        }
+      } catch (err) {
+        summary.failed += 1;
+        logFn('error', `qianfan health probe error shop=${shopTitle}: ${err.message || err}`);
       }
-    } catch (err) {
-      summary.failed += 1;
-      logFn('error', `qianfan health probe error shop=${shopTitle}: ${err.message || err}`);
     }
+  } finally {
+    probeCycleInProgress = false;
   }
 
   return summary;

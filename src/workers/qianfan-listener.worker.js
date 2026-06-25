@@ -74,29 +74,33 @@ runtime.onTopic('qianfan.send.execute', async (payload, meta) => {
 
 runtime.onTopic('qianfan.send.staleEchoCheck', async (payload, meta) => {
   const traceId = meta.traceId || payload.traceId || runtime.newTraceId();
+  const replyMeta = {
+    ...meta,
+    traceId,
+    replyTo: meta.replyTo || payload.sourceWorker,
+    requestId: meta.requestId,
+  };
   try {
+    const text = String(payload.text || payload.replyText || '').trim();
+    const sentAfterMs = Number(payload.sentAfterMs ?? payload.sendingAt ?? 0);
     const echo = await verifyStaleSendingEcho(payload.shopTitle, {
       appCid: payload.appCid,
-      text: payload.replyText,
-      sentAfterMs: payload.sendingAt,
+      text,
+      sentAfterMs,
     });
+    const qianfanMsgId = echo.verified && echo.msgId ? String(echo.msgId).trim() : '';
     runtime.publish(
       'qianfan.send.staleEchoCheck.result',
       {
         ok: true,
         data: {
-          verified: echo.verified === true,
-          qianfanMsgId: echo.msgId ? String(echo.msgId) : '',
-          reason: echo.reason || '',
+          verified: Boolean(qianfanMsgId),
+          qianfanMsgId,
+          reason: qianfanMsgId ? (echo.reason || 'echo_match') : (echo.reason || 'no_msg_id'),
         },
         traceId,
       },
-      {
-        ...meta,
-        traceId,
-        replyTo: meta.replyTo || payload.sourceWorker,
-        requestId: meta.requestId,
-      },
+      replyMeta,
     );
   } catch (err) {
     runtime.publish(
@@ -106,12 +110,7 @@ runtime.onTopic('qianfan.send.staleEchoCheck', async (payload, meta) => {
         error: { message: err.message || String(err), code: err.code || 'STALE_ECHO_CHECK_FAILED' },
         traceId,
       },
-      {
-        ...meta,
-        traceId,
-        replyTo: meta.replyTo || payload.sourceWorker,
-        requestId: meta.requestId,
-      },
+      replyMeta,
     );
   }
 });

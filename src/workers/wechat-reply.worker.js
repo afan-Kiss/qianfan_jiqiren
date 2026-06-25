@@ -346,6 +346,14 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
     { traceId, topic: 'qianfan.send.result' },
   );
 
+  if (payload.error?.code === 'QIANFAN_DEGRADED') {
+    runtime.log('warn', `qianfan degraded, defer retry replyId=${payload.replyId || request.replyId}`, {
+      traceId,
+      topic: 'qianfan.send.result',
+    });
+    return;
+  }
+
   if (payload.skipped) {
     const reason = String(payload.reason || '');
     const failText = SKIPPED_FAILURE_REASONS[reason];

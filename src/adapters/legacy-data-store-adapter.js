@@ -21,6 +21,7 @@ const FAILURE_RECEIPT_STALE_SENDING_MS = 30000;
 const QIANFAN_SEND_MAX_ATTEMPTS = 5;
 const QIANFAN_SEND_SENDING_STALE_MS = 2 * 60 * 1000;
 const QIANFAN_SEND_RETRY_BACKOFF_MS = [5000, 30000, 120000, 600000];
+const QIANFAN_DEGRADED_RETRY_MS = Number(process.env.QIANFAN_DEGRADED_RETRY_MS || 30000);
 
 const REQUIRED_ACTIONS = [
   'buyerMessage.ensureDedup',
@@ -614,6 +615,32 @@ async function executeAction(action, data = {}) {
         createdAt: now,
         attempts: 0,
       };
+      const errorCode = String(data.errorCode || data.error?.code || '').trim();
+      const isDegraded = data.degraded === true || errorCode === 'QIANFAN_DEGRADED';
+
+      if (isDegraded) {
+        const degradedAttempts = Number(entry.degradedAttempts || 0) + 1;
+        entry.degradedAttempts = degradedAttempts;
+        entry.lastError = data.reason || data.error?.message || 'qianfan_degraded';
+        entry.lastTriedAt = now;
+        entry.sendingAt = undefined;
+        entry.status = 'pending';
+        entry.retryAt = now + QIANFAN_DEGRADED_RETRY_MS;
+        entry.finalFailure = false;
+        map[key] = entry;
+        saveQianfanSendPendingMap(map);
+        return ok({
+          saved: true,
+          reason: entry.lastError,
+          attempts: normalizeSendAttempts(entry),
+          degradedAttempts,
+          finalFailure: false,
+          degraded: true,
+          retryAt: entry.retryAt,
+          pendingKey: key,
+        });
+      }
+
       const attempts = normalizeSendAttempts(entry) + 1;
       entry.attempts = attempts;
       entry.retryCount = attempts;
