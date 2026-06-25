@@ -835,6 +835,7 @@ module.exports = {
   sessionContextKey,
   appendSentReply,
   hasSuccessfulReplyForReplyId,
+  loadSentReplies,
   updatePendingAfterReply,
   isDuplicateWechatReply,
   markWechatReplyProcessed,

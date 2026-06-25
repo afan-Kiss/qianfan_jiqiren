@@ -199,6 +199,11 @@ async function sendQianfanReplyRequest(request = {}) {
       'sendQianfanTextReply',
     );
 
+    const qianfanMsgId = String(ack?.msgId || '').trim();
+    if (!qianfanMsgId) {
+      return fail(new Error('千帆发送未返回 msgId，不能标记成功'), 'QIANFAN_SEND_NO_ACK');
+    }
+
     if (!isDistributed()) {
       const dataStore = require('../qianfan-data-store');
       dataStore.markWechatReplyProcessed({ wechatReplyMsgId: request.wxMsgId, replyId });
@@ -206,7 +211,7 @@ async function sendQianfanReplyRequest(request = {}) {
       dataStore.appendSentReply({
         replyId,
         wechatReplyMsgId: request.wxMsgId,
-        qianfanMsgId: ack.msgId,
+        qianfanMsgId,
         text: replyText,
         sentAt: Date.now(),
         status: 'sent',
@@ -216,7 +221,7 @@ async function sendQianfanReplyRequest(request = {}) {
     return ok({
       success: true,
       replyId,
-      qianfanMsgId: ack.msgId,
+      qianfanMsgId,
     });
   } catch (err) {
     const reason = formatQianfanSendErrorMessage(err.message || err);

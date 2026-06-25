@@ -9,6 +9,10 @@ class Watchdog extends EventEmitter {
     this.workers = new Map();
     this.timer = null;
     this.stopped = true;
+    this.externalHealthProbe = null;
+    this.externalHealthProbeIntervalMs = options.externalHealthProbeIntervalMs ?? 15000;
+    this.lastExternalHealthProbeAt = 0;
+    this.externalHealthProbeInFlight = false;
   }
 
   register(workerName, options = {}) {
@@ -18,6 +22,12 @@ class Watchdog extends EventEmitter {
       heartbeatTimeoutMs: options.heartbeatTimeoutMs ?? this.heartbeatTimeoutMs,
       timeoutPending: false,
     });
+  }
+
+  setExternalHealthProbe(probeFn, options = {}) {
+    this.externalHealthProbe = typeof probeFn === 'function' ? probeFn : null;
+    this.externalHealthProbeIntervalMs = options.intervalMs ?? this.externalHealthProbeIntervalMs;
+    this.lastExternalHealthProbeAt = 0;
   }
 
   beat(workerName) {
@@ -49,6 +59,36 @@ class Watchdog extends EventEmitter {
       this.timer = null;
     }
     this.workers.clear();
+    this.externalHealthProbeInFlight = false;
+  }
+
+  async runExternalHealthProbe() {
+    if (!this.externalHealthProbe || this.externalHealthProbeInFlight || this.stopped) return;
+    const now = Date.now();
+    if (now - this.lastExternalHealthProbeAt < this.externalHealthProbeIntervalMs) return;
+    this.lastExternalHealthProbeAt = now;
+    this.externalHealthProbeInFlight = true;
+    try {
+      const result = await this.externalHealthProbe();
+      if (!result || result.skipped) return;
+      if (result.wrongLogin) {
+        this.emit('wxbot-wrong-login', result);
+        return;
+      }
+      if (!result.healthy) {
+        this.emit('wxbot-unhealthy', result);
+      } else if (result.recoveredFromUnhealthy) {
+        this.emit('wxbot-recovered', result);
+      }
+    } catch (err) {
+      this.emit('wxbot-unhealthy', {
+        healthy: false,
+        reason: err.message || String(err),
+        error: err,
+      });
+    } finally {
+      this.externalHealthProbeInFlight = false;
+    }
   }
 
   check() {
@@ -63,6 +103,7 @@ class Watchdog extends EventEmitter {
         this.emit('timeout', { workerName, lastBeatAt: entry.lastBeatAt, timeoutMs });
       }
     }
+    void this.runExternalHealthProbe();
   }
 
   dispose() {

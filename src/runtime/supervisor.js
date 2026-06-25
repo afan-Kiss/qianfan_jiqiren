@@ -18,11 +18,17 @@ const {
   computeRuntimeHealth,
   buildHealthTransitionLogs,
 } = require('../shared/runtime-health');
+const {
+  evaluateWxbotHealth,
+  isWrongLoginBlocked,
+  readWechatRuntimeState,
+} = require('../wechat/wechat-runtime-recovery');
 
 // 正常喂狗摘要：最多每 4 小时向「最近动态」写一条（异常/恢复仍即时记录）
 const HEARTBEAT_SUMMARY_MS = 4 * 60 * 60 * 1000;
 const STATUS_PUSH_THROTTLE_MS = 1000;
 const STATUS_KEEPALIVE_MS = 5000;
+const WECHAT_RECOVER_COOLDOWN_MS = 60000;
 
 class RuntimeSupervisor extends EventEmitter {
   constructor(options = {}) {
@@ -56,8 +62,15 @@ class RuntimeSupervisor extends EventEmitter {
     this.statusKeepaliveTimer = null;
     this.lastWatchdogFeedAt = 0;
     this.lastStatusEmitAt = 0;
+    this.lastWxbotHealthy = null;
+    this.lastWechatRecoverAt = 0;
+    this.wechatRecoverInFlight = false;
+    this.wrongLoginBlockedLogged = false;
 
     this.watchdog.on('timeout', (payload) => this.handleWatchdogTimeout(payload));
+    this.watchdog.on('wxbot-unhealthy', (payload) => this.handleWxbotUnhealthy(payload));
+    this.watchdog.on('wxbot-wrong-login', (payload) => this.handleWxbotWrongLogin(payload));
+    this.watchdog.setExternalHealthProbe(() => this.probeWxbotHealthForWatchdog());
     this.messageBus.on('published', (message) => this.forwardBusMessage(message));
   }
 
@@ -446,6 +459,21 @@ class RuntimeSupervisor extends EventEmitter {
 
   handleWatchdogTimeout({ workerName, lastBeatAt, timeoutMs }) {
     const label = WORKER_LABELS[workerName] || workerName;
+    if (workerName === 'wechat-callback') {
+      this.userLog(`看门狗检测到「${label}」心跳超时，将尝试恢复 wxbot 注入`, {
+        workerName,
+        dedupKey: `watchdog-timeout:${workerName}:${Math.floor(Date.now() / 10000)}`,
+        level: 'error',
+      });
+      this.state.setWorkerStatus(workerName, {
+        status: 'timeout',
+        lastError: `心跳超时，lastBeatAt=${lastBeatAt}`,
+      });
+      this.emitStatus();
+      void this.triggerWechatRecovery('watchdog_timeout', { force: true });
+      return;
+    }
+
     this.userLog(`看门狗检测到「${label}」心跳超时，正在重启`, {
       workerName,
       dedupKey: `watchdog-timeout:${workerName}:${Math.floor(Date.now() / 10000)}`,
@@ -457,6 +485,140 @@ class RuntimeSupervisor extends EventEmitter {
     });
     this.emitStatus();
     this.scheduleWorkerRestart(workerName, 'timeout');
+  }
+
+  async probeWxbotHealthForWatchdog() {
+    if (this.disposed || !this.wechatBootCompleted) {
+      return { skipped: true };
+    }
+    if (process.env.QIANFAN_SIM_MODE === '1') {
+      return { skipped: true, healthy: true };
+    }
+    if (isWrongLoginBlocked()) {
+      return {
+        skipped: false,
+        healthy: false,
+        wrongLogin: true,
+        reason: readWechatRuntimeState().wrongLoginReason || '微信登录 wxid 不匹配',
+      };
+    }
+
+    const evaluation = await evaluateWxbotHealth();
+    const callback = this.getWorkerStatus('wechat-callback');
+    const workerLooksAlive = ['running', 'starting', 'degraded', 'timeout'].includes(callback.status)
+      || callback.businessReady === true
+      || callback.wxbotHealthy === true;
+
+    if (evaluation.wrongLogin) {
+      return {
+        healthy: false,
+        wrongLogin: true,
+        reason: evaluation.reason,
+        report: evaluation.report,
+        workerLooksAlive,
+      };
+    }
+
+    const healthy = evaluation.healthy;
+    const recoveredFromUnhealthy = this.lastWxbotHealthy === false && healthy;
+    this.lastWxbotHealthy = healthy;
+
+    if (healthy) {
+      if (callback.wxbotHealthy !== true || callback.phase !== 'running') {
+        this.state.setWorkerStatus('wechat-callback', {
+          wxbotHealthy: true,
+          wxbotClientId: evaluation.report?.clientId,
+          wxbotWxid: evaluation.report?.wxid,
+        });
+      }
+      return {
+        healthy: true,
+        report: evaluation.report,
+        recoveredFromUnhealthy,
+        workerLooksAlive,
+      };
+    }
+
+    return {
+      healthy: false,
+      reason: evaluation.reason || 'wxbot 未就绪',
+      report: evaluation.report,
+      workerLooksAlive,
+    };
+  }
+
+  handleWxbotWrongLogin(payload = {}) {
+    const detail = payload.reason
+      || payload.report?.reason
+      || '微信登录 wxid 与配置不一致，已停止自动恢复，请人工确认登录账号';
+    if (!this.wrongLoginBlockedLogged) {
+      this.wrongLoginBlockedLogged = true;
+      this.userLog(detail, {
+        dedupKey: 'supervisor-wxbot-wrong-login',
+        level: 'error',
+      });
+    }
+    this.state.setWorkerStatus('wechat-callback', {
+      status: 'failed',
+      businessReady: false,
+      wxbotHealthy: false,
+      lastError: detail,
+      phase: 'failed',
+    });
+    this.emitStatus();
+  }
+
+  handleWxbotUnhealthy(payload = {}) {
+    if (isWrongLoginBlocked()) return;
+    const callback = this.getWorkerStatus('wechat-callback');
+    const reason = payload.reason || payload.report?.reason || 'wxbot_unhealthy';
+    const workerAliveButWxbotDead = callback.workerAlive !== false
+      && (callback.status === 'running' || callback.businessReady === true)
+      && payload.workerLooksAlive !== false;
+
+    if (workerAliveButWxbotDead || callback.wxbotHealthy === false || !payload.healthy) {
+      void this.triggerWechatRecovery(reason);
+    }
+  }
+
+  triggerWechatRecovery(reason = 'wxbot_unhealthy', options = {}) {
+    if (this.disposed || !this.wechatBootCompleted) {
+      return { ok: false, skipped: true, reason: 'wechat_not_booted' };
+    }
+    if (isWrongLoginBlocked()) {
+      return { ok: false, skipped: true, reason: 'wrong_login_blocked' };
+    }
+    const now = Date.now();
+    if (!options.force && this.wechatRecoverInFlight) {
+      return { ok: false, skipped: true, reason: 'recovery_in_flight' };
+    }
+    if (!options.force && now - this.lastWechatRecoverAt < WECHAT_RECOVER_COOLDOWN_MS) {
+      return { ok: false, skipped: true, reason: 'recovery_cooldown' };
+    }
+
+    const runner = this.runners.get('wechat-callback');
+    if (!runner || !runner.running) {
+      return this.restartWorker('wechat-callback', reason, options);
+    }
+
+    this.wechatRecoverInFlight = true;
+    this.lastWechatRecoverAt = now;
+    const sent = runner.send({
+      type: 'wechat.recover',
+      reason,
+      force: options.force === true,
+      maxWaitMs: options.maxWaitMs,
+    });
+    if (!sent) {
+      this.wechatRecoverInFlight = false;
+      return this.restartWorker('wechat-callback', reason, options);
+    }
+
+    setTimeout(() => {
+      this.wechatRecoverInFlight = false;
+    }, 30000);
+
+    return { ok: true, triggered: true, reason };
   }
 
   handleWorkerMessage(workerName, message = {}) {
@@ -547,6 +709,56 @@ class RuntimeSupervisor extends EventEmitter {
 
     if (message.type === 'worker.error') {
       const errMsg = message.error?.message || '模块运行异常';
+      const errorCode = message.errorCode || message.error?.code || '';
+      const reason = message.reason || message.error?.reason || errMsg;
+      const recover = message.recover || message.error?.recover || '';
+      const fatal = message.fatal === true;
+      const waitingRecovery = message.waitingRecovery === true;
+      const silent = message.silent === true;
+
+      if (recover === 'wechat-runtime') {
+        this.state.setWorkerStatus(workerName, {
+          status: 'degraded',
+          phase: 'recovering',
+          lastError: reason || errMsg,
+          wxbotHealthy: false,
+        });
+        if (!silent) {
+          this.userLog(`微信发送异常，正在触发 wxbot 自动恢复（${reason || errorCode || 'send_failures'}）`, {
+            dedupKey: `wechat-recover-trigger:${Math.floor(Date.now() / 30000)}`,
+            level: 'warn',
+          });
+        }
+        this.fileLog('warn', `[${workerName}] ${errMsg}`, { workerName });
+        void this.triggerWechatRecovery(reason || `worker_error:${errorCode || workerName}`, {
+          force: false,
+        });
+        this.emitStatus();
+        return;
+      }
+
+      if (fatal) {
+        this.state.setWorkerStatus(workerName, {
+          status: 'failed',
+          lastError: reason || errMsg,
+        });
+        const label = WORKER_LABELS[workerName] || workerName;
+        this.userLog(`「${label}」发生致命错误，正在重启`, {
+          dedupKey: `worker-fatal:${workerName}:${Math.floor(Date.now() / 10000)}`,
+          level: 'error',
+        });
+        this.fileLog('error', errMsg, { workerName });
+        this.emitStatus();
+        this.scheduleWorkerRestart(workerName, reason || 'fatal');
+        return;
+      }
+
+      if (waitingRecovery || silent) {
+        this.fileLog('warn', `[${workerName}] ${errMsg}`, { workerName });
+        this.emitStatus();
+        return;
+      }
+
       this.state.setWorkerStatus(workerName, { status: 'degraded', lastError: errMsg });
       const label = WORKER_LABELS[workerName] || workerName;
       const readable = /[a-z]{5,}/i.test(errMsg) ? '模块运行异常，请查看状态卡片' : errMsg;

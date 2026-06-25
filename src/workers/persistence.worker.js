@@ -131,10 +131,52 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
   const replyId = payload.replyId || request.replyId;
   const replyText = request.replyText || request.text || '';
   const contentHash = hashText(replyText);
-  const pendingKey = qianfanSendPendingKey({ replyId, replyText });
+  const pendingKey = request.idempotencyKey || qianfanSendPendingKey({ replyId, replyText });
   const successKey = qianfanSendSuccessKey({ replyId, replyText });
+  const qianfanMsgId = String(
+    payload.result?.data?.qianfanMsgId || payload.qianfanMsgId || '',
+  ).trim();
 
   if (payload.success) {
+    if (!qianfanMsgId) {
+      runtime.log(
+        'warn',
+        `qianfan send success without qianfanMsgId replyId=${replyId}, treat as failure for retry`,
+        { traceId },
+      );
+      const failResult = await handlePersistRequest({
+        action: 'qianfanSend.recordFailure',
+        data: {
+          replyId,
+          replyText,
+          contentHash,
+          idempotencyKey: pendingKey,
+          wxMsgId: request.wxMsgId,
+          reason: 'missing_qianfan_msg_id',
+        },
+        idempotencyKey: `qianfan-send-fail:${pendingKey}:${Date.now()}`,
+        traceId,
+        sourceWorker: 'persistence',
+        createdAt: Date.now(),
+      });
+      if (failResult.data?.finalFailure) {
+        await handlePersistRequest({
+          action: 'sentReply.recordFailure',
+          data: {
+            replyId,
+            wechatReplyMsgId: request.wxMsgId,
+            text: replyText,
+            reason: 'missing_qianfan_msg_id',
+          },
+          idempotencyKey: `sent-reply-fail:${pendingKey}:final`,
+          traceId,
+          sourceWorker: 'persistence',
+          createdAt: Date.now(),
+        });
+      }
+      return;
+    }
+
     await handlePersistRequest({
       action: 'qianfanSend.recordSuccess',
       data: {
@@ -142,7 +184,7 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
         replyText,
         contentHash,
         idempotencyKey: pendingKey,
-        qianfanMsgId: payload.result?.data?.qianfanMsgId,
+        qianfanMsgId,
       },
       idempotencyKey: successKey,
       traceId,
@@ -154,7 +196,7 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
       data: {
         replyId,
         wechatReplyMsgId: request.wxMsgId,
-        qianfanMsgId: payload.result?.data?.qianfanMsgId,
+        qianfanMsgId,
         text: replyText,
       },
       idempotencyKey: `sent-reply-success:${successKey}`,
@@ -182,47 +224,57 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
       createdAt: Date.now(),
     });
   } else if (!payload.skipped) {
-    await handlePersistRequest({
+    const failResult = await handlePersistRequest({
       action: 'qianfanSend.recordFailure',
       data: {
         replyId,
         replyText,
         contentHash,
         idempotencyKey: pendingKey,
+        wxMsgId: request.wxMsgId,
         reason: payload.error?.message || payload.reason || 'send_failed',
       },
-      idempotencyKey: `qianfan-send-fail:${pendingKey}`,
+      idempotencyKey: `qianfan-send-fail:${pendingKey}:${Date.now()}`,
       traceId,
       sourceWorker: 'persistence',
       createdAt: Date.now(),
     });
-    await handlePersistRequest({
-      action: 'sentReply.recordFailure',
-      data: {
-        replyId,
-        wechatReplyMsgId: request.wxMsgId,
-        text: replyText,
-        reason: payload.error?.message || payload.reason,
-      },
-      idempotencyKey: `sent-reply-fail:${pendingKey}`,
-      traceId,
-      sourceWorker: 'persistence',
-      createdAt: Date.now(),
-    });
-    await handlePersistRequest({
-      action: 'deadLetter.record',
-      data: {
+
+    if (failResult.data?.finalFailure) {
+      await handlePersistRequest({
+        action: 'sentReply.recordFailure',
+        data: {
+          replyId,
+          wechatReplyMsgId: request.wxMsgId,
+          text: replyText,
+          reason: payload.error?.message || payload.reason,
+        },
+        idempotencyKey: `sent-reply-fail:${pendingKey}:final`,
         traceId,
-        topic: 'qianfan.send.result',
-        workerName: 'qianfan-sender',
-        reason: payload.error?.message || payload.reason || 'qianfan_send_failed',
-        payload,
-        error: payload.error,
-      },
-      idempotencyKey: `dead-letter:qianfan-send:${pendingKey}`,
-      traceId,
-      sourceWorker: 'persistence',
-      createdAt: Date.now(),
-    });
+        sourceWorker: 'persistence',
+        createdAt: Date.now(),
+      });
+      await handlePersistRequest({
+        action: 'deadLetter.record',
+        data: {
+          traceId,
+          topic: 'qianfan.send.result',
+          workerName: 'qianfan-sender',
+          reason: payload.error?.message || payload.reason || 'qianfan_send_failed',
+          payload,
+          error: payload.error,
+        },
+        idempotencyKey: `dead-letter:qianfan-send:${pendingKey}:final`,
+        traceId,
+        sourceWorker: 'persistence',
+        createdAt: Date.now(),
+      });
+    } else {
+      runtime.log(
+        'info',
+        `qianfan send scheduled retry replyId=${replyId} attempts=${failResult.data?.attempts || '?'} retryAt=${failResult.data?.retryAt || ''}`,
+        { traceId, topic: 'qianfan.send.result' },
+      );
+    }
   }
 });

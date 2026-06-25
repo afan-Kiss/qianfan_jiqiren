@@ -86,6 +86,7 @@ async function sendFailureReceiptWithDedup({
       { idempotencyKey: receiptKey, traceId },
     );
   } catch (err) {
+    runtime.reportWechatSendError(err, { reason: 'failure_receipt_send_failed' });
     await runtime.persist(
       'failureReceipt.markFailed',
       {
@@ -96,7 +97,9 @@ async function sendFailureReceiptWithDedup({
       },
       { idempotencyKey: `failure-fail:${receiptKey}`, traceId },
     );
-    runtime.log('error', `failure receipt send failed: ${err.message}`, { traceId });
+    if (!err?.waitingRecovery) {
+      runtime.log('error', `failure receipt send failed: ${err.message}`, { traceId });
+    }
   }
 }
 
@@ -120,7 +123,10 @@ async function sendSuccessReceiptToWechat({ replyId, pending, text, fromWxid, tr
       data: { replyId, buyerNick: pending?.buyerNick || '', isAppend },
     });
   } catch (err) {
-    runtime.log('error', `success receipt send failed: ${err.message}`, { traceId });
+    runtime.reportWechatSendError(err, { reason: 'success_receipt_send_failed' });
+    if (!err?.waitingRecovery) {
+      runtime.log('error', `success receipt send failed: ${err.message}`, { traceId });
+    }
   }
 }
 

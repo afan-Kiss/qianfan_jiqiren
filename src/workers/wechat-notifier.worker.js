@@ -70,7 +70,11 @@ async function handleNotify(payload, meta) {
     { idempotencyKey: `session-notify:${idempotencyKey}`, traceId },
   );
 
-  const result = await notifyBuyerMessage(message, { ...options, persistHooks });
+  const result = await notifyBuyerMessage(message, {
+    ...options,
+    persistHooks,
+    onWechatSendError: (err) => runtime.reportWechatSendError(err, { reason: 'notify_send_failed' }),
+  });
 
   if (result.ok && !result.data?.skipped && result.data?.replyId) {
     if (result.data.notifyAllOk) {

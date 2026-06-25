@@ -401,6 +401,13 @@ async function flushMergeBucket(bucketKey) {
           `[错误] 微信通知发送失败：${formatTargetLabel(target)}，原因：${err.message || err}`,
         );
         debugLog({ level: 'error', replyId, target: target.wxid, error: String(err.message || err) });
+        if (typeof bucket.onWechatSendError === 'function') {
+          try {
+            bucket.onWechatSendError(err);
+          } catch {
+            // ignore hook errors
+          }
+        }
         failed.push(target);
       }
     }
@@ -520,6 +527,7 @@ function queueBuyerNotification(message, options = {}) {
       seenTexts: new Set(),
       httpFallback: options.httpFallback === true,
       persistHooks: options.persistHooks || null,
+      onWechatSendError: typeof options.onWechatSendError === 'function' ? options.onWechatSendError : null,
       timer: null,
     };
     mergeBuckets.set(bucketKey, bucket);
@@ -527,6 +535,9 @@ function queueBuyerNotification(message, options = {}) {
     bucket.httpFallback = true;
   }
   if (options.persistHooks) bucket.persistHooks = options.persistHooks;
+  if (typeof options.onWechatSendError === 'function') {
+    bucket.onWechatSendError = options.onWechatSendError;
+  }
 
   const normalizedText = normalizeMessageText(message.text);
   const dedupeTextKey = message.msgId

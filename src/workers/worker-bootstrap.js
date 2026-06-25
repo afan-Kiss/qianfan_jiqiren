@@ -33,6 +33,7 @@ function createWorkerRuntime(options = {}) {
   const cleanups = [];
   const pendingRequests = new Map();
   let simInjectHandler = null;
+  let wechatRecoverHandler = null;
   let heartbeatTimer = null;
   let shuttingDown = false;
 
@@ -64,6 +65,65 @@ function createWorkerRuntime(options = {}) {
       message,
       traceId: extra.traceId || '',
       topic: extra.topic || '',
+    });
+  }
+
+  function reportError(options = {}) {
+    const message = String(options.message || options.error?.message || '模块运行异常').trim();
+    if (!message) return;
+    sendToSupervisor({
+      type: 'worker.error',
+      workerName,
+      fatal: options.fatal === true,
+      recover: options.recover || '',
+      errorCode: options.errorCode || options.error?.code || '',
+      reason: options.reason || options.error?.reason || '',
+      waitingRecovery: options.waitingRecovery === true,
+      silent: options.silent === true,
+      error: {
+        message,
+        code: options.errorCode || options.error?.code || '',
+        reason: options.reason || '',
+        stack: options.stack || options.error?.stack || '',
+      },
+    });
+  }
+
+  function reportWechatSendError(err, extra = {}) {
+    if (!err) return;
+    if (err.waitingRecovery) {
+      reportError({
+        message: err.message || '微信运行时恢复中，暂停发送',
+        errorCode: err.code || 'WECHAT_RUNTIME_RECOVERING',
+        reason: extra.reason || 'waiting_wechat_runtime_recovery',
+        waitingRecovery: true,
+        silent: true,
+      });
+      return;
+    }
+    if (err.shouldRecover) {
+      reportError({
+        message: err.message || '微信发送连续失败，触发运行时恢复',
+        errorCode: err.code || err.errorCode || 'WXBOT_SEND_ESCALATED',
+        reason: err.recoverReason || extra.reason || 'send_failures_threshold',
+        recover: 'wechat-runtime',
+      });
+      return;
+    }
+    if (err.runtimeFault) {
+      reportError({
+        message: err.message || '微信发送失败',
+        errorCode: err.code || err.errorCode || 'WXBOT_RUNTIME_FAULT',
+        reason: extra.reason || 'wechat_send_runtime_fault',
+        silent: extra.silent === true,
+      });
+      return;
+    }
+    reportError({
+      message: err.message || String(err),
+      errorCode: err.code || extra.errorCode || 'WECHAT_SEND_FAILED',
+      reason: extra.reason || '',
+      fatal: extra.fatal === true,
     });
   }
 
@@ -185,6 +245,10 @@ function createWorkerRuntime(options = {}) {
     simInjectHandler = handler;
   }
 
+  function onWechatRecover(handler) {
+    wechatRecoverHandler = handler;
+  }
+
   function stopHeartbeat() {
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer);
@@ -284,6 +348,18 @@ function createWorkerRuntime(options = {}) {
       stopHeartbeat();
       return;
     }
+    if (message.type === 'wechat.recover') {
+      if (wechatRecoverHandler) {
+        Promise.resolve(wechatRecoverHandler(message)).catch((err) => {
+          sendToSupervisor({
+            type: 'worker.error',
+            workerName,
+            error: { message: err.message || String(err), stack: err.stack || '' },
+          });
+        });
+      }
+      return;
+    }
     if (message.type === 'bus.message') {
       dispatchBusMessage(message);
     }
@@ -346,10 +422,13 @@ function createWorkerRuntime(options = {}) {
     subscribe,
     onTopic,
     onSimInject,
+    onWechatRecover,
     stopHeartbeat,
     registerCleanup,
     registerTimer,
     reportStatus,
+    reportError,
+    reportWechatSendError,
     shutdown,
     newTraceId,
   };

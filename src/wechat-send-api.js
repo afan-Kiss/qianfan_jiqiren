@@ -6,6 +6,12 @@ const path = require('path');
 const crypto = require('crypto');
 const config = require('./wechat/wxbot-new-config');
 const { fetchWithTimeout } = require('./fetch-timeout');
+const {
+  assertWechatSendAllowed,
+  clearSendFailureCounters,
+  enrichWechatSendError,
+  evaluateWxbotHealth,
+} = require('./wechat/wechat-runtime-recovery');
 
 const IMAGE_CACHE_DIR = path.join(config.root, 'data', 'wechat-image-cache');
 
@@ -63,17 +69,53 @@ function isHttpUrl(value) {
   return /^https?:\/\//i.test(String(value || '').trim());
 }
 
+function guardWechatSendAllowed() {
+  try {
+    assertWechatSendAllowed();
+  } catch (err) {
+    throw enrichWechatSendError(err, {});
+  }
+}
+
+async function buildSendFaultMetaFromHealth() {
+  try {
+    const evaluation = await evaluateWxbotHealth();
+    return {
+      injectOk: evaluation.report?.injectOk,
+      clientId: Number(evaluation.report?.clientId || 0),
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function finalizeWechatSendFailure(err, meta = {}) {
+  let healthMeta = meta;
+  if (!meta.injectOk && !meta.clientId && !meta.httpStatus) {
+    healthMeta = { ...meta, ...(await buildSendFaultMetaFromHealth()) };
+  }
+  throw enrichWechatSendError(err, healthMeta);
+}
+
 async function sendWxText(wxid, content) {
+  guardWechatSendAllowed();
+
   const url = `${config.baseUrl.replace(/\/$/, '')}/api/wechat/send-text`;
-  const res = await fetchWithTimeout(
-    url,
-    {
-      method: 'POST',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wxid, content }),
-    },
-    8000
-  );
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wxid, content }),
+      },
+      8000
+    );
+  } catch (err) {
+    await finalizeWechatSendFailure(err, { httpStatus: err?.httpStatus });
+  }
+
   const text = await res.text();
   let body = null;
   try {
@@ -81,9 +123,14 @@ async function sendWxText(wxid, content) {
   } catch {
     body = { raw: text };
   }
+
   if (!res.ok || body?.code !== 0) {
-    throw new Error(body?.message || text || `HTTP ${res.status}`);
+    const err = new Error(body?.message || text || `HTTP ${res.status}`);
+    err.httpStatus = res.status;
+    await finalizeWechatSendFailure(err, { httpStatus: res.status, body });
   }
+
+  clearSendFailureCounters();
   const data = body?.data || body || {};
   const wxMsgId = String(
     data.msgId || data.msgid || data.messageId || data.message_id || data.wxMsgId || ''
@@ -92,6 +139,7 @@ async function sendWxText(wxid, content) {
 }
 
 async function sendWxImageFile(wxid, localPath) {
+  guardWechatSendAllowed();
   const absPath = path.resolve(localPath);
   if (!fs.existsSync(absPath)) throw new Error(`图片文件不存在：${absPath}`);
 
@@ -103,15 +151,21 @@ async function sendWxImageFile(wxid, localPath) {
   form.append('wxid', wxid);
   form.append('file', blob, fileName);
 
-  const res = await fetchWithTimeout(
-    url,
-    {
-      method: 'POST',
-      headers: authHeaders(),
-      body: form,
-    },
-    12000
-  );
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+      },
+      12000
+    );
+  } catch (err) {
+    await finalizeWechatSendFailure(err, { httpStatus: err?.httpStatus });
+  }
+
   const text = await res.text();
   let body = null;
   try {
@@ -119,9 +173,14 @@ async function sendWxImageFile(wxid, localPath) {
   } catch {
     body = { raw: text };
   }
+
   if (!res.ok || body?.code !== 0) {
-    throw new Error(body?.message || text || `HTTP ${res.status}`);
+    const err = new Error(body?.message || text || `HTTP ${res.status}`);
+    err.httpStatus = res.status;
+    await finalizeWechatSendFailure(err, { httpStatus: res.status, body });
   }
+
+  clearSendFailureCounters();
   const data = body?.data || body || {};
   const wxMsgId = String(
     data.msgId || data.msgid || data.messageId || data.message_id || data.wxMsgId || ''

@@ -17,6 +17,9 @@ const MAX_IDEMPOTENCY = 50000;
 const MAX_DEAD_LETTERS = 5000;
 const QIANFAN_SEND_PENDING_STALE_MS = 120000;
 const FAILURE_RECEIPT_STALE_SENDING_MS = 30000;
+const QIANFAN_SEND_MAX_ATTEMPTS = 5;
+const QIANFAN_SEND_SENDING_STALE_MS = 2 * 60 * 1000;
+const QIANFAN_SEND_RETRY_BACKOFF_MS = [5000, 30000, 120000, 600000];
 
 const REQUIRED_ACTIONS = [
   'buyerMessage.ensureDedup',
@@ -37,6 +40,9 @@ const REQUIRED_ACTIONS = [
   'qianfanSend.recordPending',
   'qianfanSend.recordSuccess',
   'qianfanSend.recordFailure',
+  'qianfanSend.listDue',
+  'qianfanSend.markSending',
+  'qianfanSend.checkConflict',
   'deadLetter.record',
   'failureReceipt.ensureNotSent',
   'failureReceipt.markSent',
@@ -203,6 +209,39 @@ function saveQianfanSendPendingMap(map) {
   writeJson(QIANFAN_SEND_PENDING_FILE, trimObjectKeys(map, 5000));
 }
 
+function normalizeSendAttempts(entry = {}) {
+  return Number(entry.attempts ?? entry.retryCount ?? 0);
+}
+
+function computeRetryAtAfterFailure(attempts) {
+  const idx = Math.min(Math.max(Number(attempts) || 1, 1), QIANFAN_SEND_RETRY_BACKOFF_MS.length) - 1;
+  return Date.now() + QIANFAN_SEND_RETRY_BACKOFF_MS[idx];
+}
+
+function isQianfanSendDue(entry, now = Date.now()) {
+  if (!entry || entry.status === 'sent') return false;
+  const attempts = normalizeSendAttempts(entry);
+  if (attempts >= QIANFAN_SEND_MAX_ATTEMPTS) return false;
+
+  if (entry.status === 'sending') {
+    const sendingAt = Number(entry.sendingAt || 0);
+    return sendingAt > 0 && now - sendingAt >= QIANFAN_SEND_SENDING_STALE_MS;
+  }
+
+  if (!['pending', 'failed'].includes(entry.status)) return false;
+
+  const hasRetryAt = entry.retryAt !== undefined && entry.retryAt !== null;
+  if (!hasRetryAt) {
+    return false;
+  }
+
+  const retryAt = Number(entry.retryAt);
+  if (retryAt > now) return false;
+
+  if (attempts > 0) return true;
+  return hasRetryAt;
+}
+
 function loadWechatReplyDedupMap() {
   return readJson(WECHAT_REPLY_DEDUP_FILE, {});
 }
@@ -218,6 +257,9 @@ const SERIALIZED_ACTIONS = new Set([
   'wechatReply.ensureDedup',
   'wechatReply.markHandled',
   'qianfanSend.recordPending',
+  'qianfanSend.listDue',
+  'qianfanSend.markSending',
+  'qianfanSend.checkConflict',
   'failureReceipt.ensureNotSent',
   'pendingReply.save',
 ]);
@@ -407,8 +449,33 @@ async function executeAction(action, data = {}) {
       const map = loadQianfanSendPendingMap();
       const key = data.idempotencyKey || `${data.replyId}:${data.contentHash || ''}`;
       const existing = map[key];
+      const now = Date.now();
+
+      if (existing?.status === 'sent') {
+        return ok({
+          saved: false,
+          alreadyExists: true,
+          duplicate: true,
+          pendingKey: key,
+          status: 'sent',
+        });
+      }
+
+      if (existing?.status === 'sending') {
+        const sendingAt = Number(existing.sendingAt || existing.createdAt || 0);
+        if (now - sendingAt <= QIANFAN_SEND_SENDING_STALE_MS) {
+          return ok({
+            saved: false,
+            alreadyExists: true,
+            duplicate: true,
+            pendingKey: key,
+            status: 'sending',
+          });
+        }
+      }
+
       if (existing && existing.status === 'pending') {
-        const age = Date.now() - (existing.createdAt || 0);
+        const age = now - (existing.createdAt || 0);
         if (age <= QIANFAN_SEND_PENDING_STALE_MS) {
           return ok({
             saved: false,
@@ -418,7 +485,11 @@ async function executeAction(action, data = {}) {
             status: existing.status,
           });
         }
-      } else if (existing && existing.status !== 'failed') {
+      } else if (
+        existing
+        && existing.status !== 'failed'
+        && normalizeSendAttempts(existing) < QIANFAN_SEND_MAX_ATTEMPTS
+      ) {
         return ok({
           saved: false,
           alreadyExists: true,
@@ -427,16 +498,23 @@ async function executeAction(action, data = {}) {
           status: existing.status || 'pending',
         });
       }
+
       map[key] = {
         replyId: data.replyId,
         replyText: data.replyText,
         wxMsgId: data.wxMsgId,
         fromWxid: data.fromWxid,
         traceId: data.traceId,
+        pending: data.pending || existing?.pending || null,
+        receiverAppUids: Array.isArray(data.receiverAppUids)
+          ? data.receiverAppUids.filter(Boolean)
+          : (existing?.receiverAppUids || []),
+        idempotencyKey: key,
         status: 'pending',
-        createdAt: existing?.createdAt || Date.now(),
-        retryAt: existing ? Date.now() : undefined,
-        retryCount: existing ? Number(existing.retryCount || 0) + 1 : 0,
+        createdAt: existing?.createdAt || now,
+        attempts: existing ? normalizeSendAttempts(existing) : 0,
+        retryCount: existing ? normalizeSendAttempts(existing) : 0,
+        retryAt: existing?.retryAt,
       };
       saveQianfanSendPendingMap(map);
       return ok({
@@ -446,39 +524,157 @@ async function executeAction(action, data = {}) {
         pendingKey: key,
       });
     }
+    case 'qianfanSend.listDue': {
+      const map = loadQianfanSendPendingMap();
+      const now = Date.now();
+      const due = [];
+      for (const [pendingKey, entry] of Object.entries(map)) {
+        if (!isQianfanSendDue(entry, now)) continue;
+        due.push({
+          pendingKey,
+          ...entry,
+          attempts: normalizeSendAttempts(entry),
+        });
+      }
+      due.sort(
+        (a, b) => Number(a.retryAt || a.createdAt || 0) - Number(b.retryAt || b.createdAt || 0),
+      );
+      return ok({ due, count: due.length });
+    }
+    case 'qianfanSend.markSending': {
+      const map = loadQianfanSendPendingMap();
+      const key = data.pendingKey || data.idempotencyKey;
+      const entry = map[key];
+      if (!entry) {
+        return ok({ claimed: false, reason: 'missing' });
+      }
+      const attempts = normalizeSendAttempts(entry);
+      if (entry.status === 'sent') {
+        return ok({ claimed: false, reason: 'already_sent', pendingKey: key });
+      }
+      if (attempts >= QIANFAN_SEND_MAX_ATTEMPTS) {
+        return ok({ claimed: false, reason: 'max_attempts', pendingKey: key });
+      }
+      if (entry.status === 'sending') {
+        const sendingAt = Number(entry.sendingAt || 0);
+        if (sendingAt > 0 && Date.now() - sendingAt < QIANFAN_SEND_SENDING_STALE_MS) {
+          return ok({ claimed: false, reason: 'sending_in_flight', pendingKey: key });
+        }
+      }
+      const retryAt = Number(entry.retryAt || 0);
+      if (retryAt > Date.now()) {
+        return ok({ claimed: false, reason: 'not_due', pendingKey: key });
+      }
+      for (const [otherKey, other] of Object.entries(map)) {
+        if (otherKey === key) continue;
+        if (Number(other.replyId) !== Number(entry.replyId)) continue;
+        if (other.status !== 'sending') continue;
+        const otherSendingAt = Number(other.sendingAt || 0);
+        if (otherSendingAt > 0 && Date.now() - otherSendingAt < QIANFAN_SEND_SENDING_STALE_MS) {
+          return ok({ claimed: false, reason: 'reply_id_in_flight', pendingKey: key });
+        }
+      }
+      entry.status = 'sending';
+      entry.sendingAt = Date.now();
+      map[key] = entry;
+      saveQianfanSendPendingMap(map);
+      return ok({
+        claimed: true,
+        pendingKey: key,
+        entry: { ...entry, pendingKey: key, attempts },
+      });
+    }
+    case 'qianfanSend.checkConflict': {
+      const replyId = Number(data.replyId);
+      const pendingKey = data.pendingKey || data.idempotencyKey || '';
+      const map = loadQianfanSendPendingMap();
+      const pendingEntry = pendingKey ? map[pendingKey] : null;
+      const sentRecord = dataStore.loadSentReplies().find(
+        (row) => Number(row.replyId) === replyId && row.status === 'sent',
+      );
+      if (!sentRecord) {
+        return ok({ conflict: false, replyId, pendingKey });
+      }
+      if (pendingEntry?.status === 'sent') {
+        return ok({ conflict: false, replyId, pendingKey, synced: true });
+      }
+      return ok({
+        conflict: true,
+        replyId,
+        pendingKey,
+        pendingStatus: pendingEntry?.status || 'missing',
+        sentRecord,
+        message:
+          `replyId #${replyId} 已在 qianfan-sent-replies 标记 sent`
+          + `（qianfanMsgId=${sentRecord.qianfanMsgId || '无'}），`
+          + `但 qianfan-send-pending 仍为 ${pendingEntry?.status || 'missing'}，跳过自动重试`,
+      });
+    }
     case 'qianfanSend.recordSuccess': {
       const map = loadQianfanSendPendingMap();
       const key = data.idempotencyKey || `${data.replyId}:${data.contentHash || ''}`;
+      const qianfanMsgId = String(data.qianfanMsgId || '').trim();
+      if (!qianfanMsgId) {
+        return fail(new Error('缺少 qianfanMsgId，不能标记 sent'), 'MISSING_QIANFAN_MSG_ID');
+      }
       if (map[key]) {
         map[key].status = 'sent';
         map[key].sentAt = Date.now();
-        map[key].qianfanMsgId = data.qianfanMsgId;
+        map[key].qianfanMsgId = qianfanMsgId;
+        map[key].sendingAt = undefined;
+        map[key].lastError = '';
         saveQianfanSendPendingMap(map);
       }
-      return ok({ saved: true });
+      return ok({ saved: true, pendingKey: key, qianfanMsgId });
     }
     case 'qianfanSend.recordFailure': {
       const map = loadQianfanSendPendingMap();
       const key = data.idempotencyKey || `${data.replyId}:${data.contentHash || ''}`;
       const replyId = data.replyId;
       const wxMsgId = data.wxMsgId || map[key]?.wxMsgId;
-      if (map[key]) {
-        map[key].status = 'failed';
-        map[key].failedAt = Date.now();
-        map[key].reason = data.reason || data.error?.message || 'send_failed';
-        saveQianfanSendPendingMap(map);
+      const now = Date.now();
+      const entry = map[key] || {
+        replyId,
+        replyText: data.replyText,
+        wxMsgId,
+        status: 'pending',
+        createdAt: now,
+        attempts: 0,
+      };
+      const attempts = normalizeSendAttempts(entry) + 1;
+      entry.attempts = attempts;
+      entry.retryCount = attempts;
+      entry.lastError = data.reason || data.error?.message || 'send_failed';
+      entry.lastTriedAt = now;
+      entry.sendingAt = undefined;
+
+      const finalFailure = attempts >= QIANFAN_SEND_MAX_ATTEMPTS;
+      if (finalFailure) {
+        entry.status = 'failed';
+        entry.failedAt = now;
+        entry.reason = entry.lastError;
+        entry.retryAt = undefined;
+        entry.finalFailure = true;
+      } else {
+        entry.status = 'pending';
+        entry.retryAt = computeRetryAtAfterFailure(attempts);
+        entry.finalFailure = false;
       }
+
+      map[key] = entry;
+      saveQianfanSendPendingMap(map);
+
       const replyText = data.replyText;
       const dedupMap = loadWechatReplyDedupMap();
       let dedupChanged = false;
-      if (replyId && replyText) {
+      if (finalFailure && replyId && replyText) {
         const contentKey = wechatReplyContentKey({ replyId, replyText });
         if (contentKey && dedupMap[contentKey]) {
           delete dedupMap[contentKey];
           dedupChanged = true;
         }
       }
-      if (wxMsgId) {
+      if (finalFailure && wxMsgId) {
         if (dedupMap[wxMsgId]) {
           delete dedupMap[wxMsgId];
           dedupChanged = true;
@@ -489,10 +685,17 @@ async function executeAction(action, data = {}) {
         }
       }
       if (dedupChanged) saveWechatReplyDedupMap(dedupMap);
-      if (wxMsgId) {
+      if (finalFailure && wxMsgId) {
         dataStore.unmarkWechatReplyProcessed({ wechatReplyMsgId: wxMsgId, replyId });
       }
-      return ok({ saved: true, reason: data.reason || data.error?.message });
+      return ok({
+        saved: true,
+        reason: entry.lastError,
+        attempts,
+        finalFailure,
+        retryAt: entry.retryAt,
+        pendingKey: key,
+      });
     }
     case 'failureReceipt.ensureNotSent': {
       const key = data.key || data.idempotencyKey;
@@ -594,6 +797,9 @@ const NO_IDEMPOTENCY_CACHE_ACTIONS = new Set([
   'wechatReply.ensureDedup',
   'failureReceipt.ensureNotSent',
   'qianfanSend.recordPending',
+  'qianfanSend.listDue',
+  'qianfanSend.markSending',
+  'qianfanSend.checkConflict',
   'pendingReply.get',
   'pendingReply.save',
   'pendingReply.resolve',

@@ -13,7 +13,8 @@ const runtime = createWorkerRuntime({ workerName: 'qianfan-listener' });
 runtime.onTopic('qianfan.send.execute', async (payload, meta) => {
   const traceId = meta.traceId || payload.traceId || runtime.newTraceId();
   const result = await sendQianfanReplyRequest(payload);
-  const success = Boolean(result.ok && result.data?.success);
+  const qianfanMsgId = String(result.data?.qianfanMsgId || '').trim();
+  const success = Boolean(result.ok && result.data?.success && qianfanMsgId);
 
   runtime.publish(
     'qianfan.send.result',
@@ -24,6 +25,8 @@ runtime.onTopic('qianfan.send.execute', async (payload, meta) => {
       traceId,
       request: payload,
       result,
+      retry: payload.retry === true,
+      qianfanMsgId: qianfanMsgId || undefined,
       error: success
         ? undefined
         : {

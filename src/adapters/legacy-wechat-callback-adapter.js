@@ -1,10 +1,18 @@
 const fs = require('fs');
-const { spawn, execSync } = require('child_process');
 const net = require('net');
 const config = require('../wechat/wxbot-new-config');
-const { checkWxbotHealth } = require('../wxbot-new-health');
 const { syncWxbotCallbackConfig } = require('../wxbot-new-api');
 const { startWxbotCallbackServer } = require('../wxbot-new-callback-server');
+const {
+  recoverWechatRuntime,
+  evaluateWxbotHealth,
+  isHealthyReport,
+  isWrongLoginBlocked,
+  waitForHealthyInjection,
+  killWechatProcesses,
+  startWxbotProcess,
+  blockWrongLoginRecovery,
+} = require('../wechat/wechat-runtime-recovery');
 const { ok, fail } = require('./adapter-result');
 
 function isSimMode() {
@@ -32,86 +40,68 @@ function isPortInUse(port, host = '127.0.0.1') {
   });
 }
 
-function ensureWxbotExe() {
-  if (!fs.existsSync(config.wxbotExe)) {
-    throw new Error(`未找到 wxbot.exe：${config.wxbotExe}`);
-  }
-}
-
-function killExistingWechat() {
-  if (!config.oneClick.autoKillExistingWechat) return;
-  for (const proc of ['Weixin.exe', 'WeChat.exe', 'wxbot.exe']) {
-    try {
-      execSync(`taskkill /F /IM ${proc}`, { stdio: 'ignore' });
-    } catch {
-      // ignore
-    }
-  }
-}
-
-function startWxbotExe() {
-  spawn(config.wxbotExe, [], {
-    cwd: config.wxbotRuntimeDir,
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: false,
-  }).unref();
-  wxbotStartedByRuntime = true;
-}
-
 function stopWxbotRuntime() {
   wxbotStartedByRuntime = false;
-  try {
-    execSync('taskkill /F /IM wxbot.exe', { stdio: 'ignore' });
-    return { ok: true, stopped: true };
-  } catch {
-    return { ok: true, stopped: false };
-  }
+  killWechatProcesses();
+  return { ok: true, stopped: true };
 }
 
-async function waitForInjection(maxWaitMs = 120000) {
-  const interval = config.oneClick.healthCheckIntervalMs || 2000;
-  const started = Date.now();
-  while (Date.now() - started < maxWaitMs) {
-    const report = await checkWxbotHealth();
-    if (report.ok || report.wrongLoginWxid) return report;
-    await sleep(interval);
-  }
-  return checkWxbotHealth();
-}
-
-async function prepareWechatRuntime() {
+async function prepareWechatRuntime(options = {}) {
   if (isSimMode()) {
     return ok({ report: { ok: true, sim: true } });
   }
+
   try {
-    ensureWxbotExe();
-    if (isDistributedRuntime()) {
-      const existing = await checkWxbotHealth();
-      if (existing.apiOk && existing.injectOk) {
-        return ok({ report: existing, reused: true });
+    if (isWrongLoginBlocked()) {
+      return fail(
+        new Error('微信登录 wxid 不匹配，已停止自动恢复，请人工确认登录账号'),
+        'WECHAT_WRONG_LOGIN_BLOCKED',
+      );
+    }
+
+    const evaluation = await evaluateWxbotHealth();
+    if (evaluation.wrongLogin) {
+      blockWrongLoginRecovery(evaluation.report, 'boot');
+      return fail(
+        new Error(evaluation.report?.reason || '当前登录微信不是机器人号'),
+        'WECHAT_WRONG_LOGIN',
+      );
+    }
+
+    if (evaluation.healthy) {
+      await syncWxbotCallbackConfig();
+      return ok({ report: evaluation.report, reused: true });
+    }
+
+    if (isDistributedRuntime() && evaluation.report?.apiOk && !options.forceRecover) {
+      const waited = await waitForHealthyInjection(options.maxWaitMs);
+      if (waited.wrongLoginWxid) {
+        return fail(new Error(waited.reason || '微信登录账号不匹配'), 'WECHAT_WRONG_LOGIN');
       }
-      if (existing.apiOk) {
-        const report = await waitForInjection();
-        if (report.wrongLoginWxid) {
-          return fail(new Error(report.reason || '微信登录账号不匹配'), 'WECHAT_WRONG_LOGIN');
-        }
-        if (report.ok) {
-          return ok({ report, reused: true });
-        }
+      if (isHealthyReport(waited)) {
+        await syncWxbotCallbackConfig();
+        return ok({ report: waited, reused: true });
       }
     }
-    killExistingWechat();
-    startWxbotExe();
-    const report = await waitForInjection();
-    if (report.wrongLoginWxid) {
-      return fail(new Error('当前登录微信不是机器人号'), 'WRONG_LOGIN_WXID');
+
+    const recovered = await recoverWechatRuntime(options.reason || 'boot', {
+      maxWaitMs: options.maxWaitMs,
+      force: options.forceRecover,
+      onPhase: options.onPhase,
+    });
+
+    if (recovered.blocked) {
+      return fail(new Error(recovered.reason || '微信登录账号不匹配'), recovered.code || 'WECHAT_WRONG_LOGIN');
     }
-    if (!report.ok) {
-      return fail(new Error(report.reason || report.brief || '微信未就绪'), 'WECHAT_NOT_READY');
+    if (!recovered.ok) {
+      return fail(
+        new Error(recovered.reason || '微信未就绪'),
+        recovered.code || 'WECHAT_NOT_READY',
+      );
     }
-    await syncWxbotCallbackConfig();
-    return ok({ report });
+
+    wxbotStartedByRuntime = true;
+    return ok({ report: recovered.report, recovered: true });
   } catch (err) {
     return fail(err, 'WECHAT_BOOT_FAILED');
   }
@@ -143,7 +133,7 @@ async function startCallbackServer(onCallback) {
 
     if (busy && isDistributedRuntime()) {
       return fail(
-        new Error(`8787 回调端口已被占用，distributed runtime 不允许重复启动 callback server`),
+        new Error('8787 回调端口已被占用，distributed runtime 不允许重复启动 callback server'),
         'CALLBACK_PORT_BUSY',
       );
     }
@@ -176,8 +166,10 @@ function getCallbackServerState() {
 
 module.exports = {
   prepareWechatRuntime,
+  recoverWechatRuntime,
   startCallbackServer,
   stopCallbackServer,
   stopWxbotRuntime,
   getCallbackServerState,
+  evaluateWxbotHealth,
 };
