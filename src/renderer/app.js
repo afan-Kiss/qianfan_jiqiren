@@ -812,14 +812,19 @@ async function handleStartRelay() {
   state.starting = true;
   renderAll();
   setProgressSteps([
-    { text: '正在通过 cmd 以调试模式启动千帆…', status: 'active' },
-    { text: '等待千帆店铺就绪…', status: 'pending' },
-    { text: '等待启动微信…', status: 'pending' },
+    { text: '正在检查/启动千帆（DevTools 9223）…', status: 'active' },
+    { text: '正在冷启动微信并等待注入…', status: 'pending' },
+    { text: '正在启动 worker 主链路…', status: 'pending' },
   ]);
 
   const startResult = await window.qianfanApp.startRelay();
   if (!startResult.ok) {
     state.starting = false;
+    if (startResult.inProgress) {
+      showToast(startResult.message || '正在启动中转，请稍候…');
+      renderAll();
+      return;
+    }
     setProgressSteps([{ text: startResult.message || '启动失败', status: 'error' }]);
     addActivity(startResult.message || '启动失败');
     renderAll();
@@ -827,12 +832,12 @@ async function handleStartRelay() {
     return;
   }
 
-  addActivity('正在自动启动千帆，就绪后再启动微信…');
-  state.lastMessage = '正在自动启动千帆，就绪后再启动微信';
+  addActivity('千帆与微信已就绪，正在启动 worker 主链路…');
+  state.lastMessage = '千帆与微信已就绪，正在启动 worker 主链路';
   setProgressSteps([
-    { text: '正在启动千帆客服工作台…', status: 'active' },
-    { text: '等待千帆店铺就绪…', status: 'pending' },
-    { text: '等待启动微信…', status: 'pending' },
+    { text: '千帆 DevTools 已就绪', status: 'done' },
+    { text: '微信已注入并就绪', status: 'done' },
+    { text: '正在等待店铺与 worker 就绪…', status: 'active' },
   ]);
   scheduleBackendStatusRefresh();
   startStatusPolling();

@@ -175,7 +175,10 @@ async function boot() {
     return;
   }
 
-  const prep = await prepareWechatRuntime({ reason: 'boot' });
+  const prep = await prepareWechatRuntime({
+    reason: process.env.WECHAT_MANUAL_PREPARED === '1' ? 'boot_after_manual' : 'boot',
+    reuseOnly: process.env.WECHAT_MANUAL_PREPARED === '1',
+  });
   if (!prep.ok) {
     const reason = prep.error?.message || '微信底座启动失败';
     runtime.log('warn', reason);

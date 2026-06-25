@@ -55,6 +55,7 @@ class RuntimeSupervisor extends EventEmitter {
     this.startAllInProgress = false;
     this.wechatBootCompleted = false;
     this.wechatBootInProgress = false;
+    this.pendingWechatManualPrepared = false;
     this.workerStatusSnapshot = new Map();
     this.healthStatusSnapshot = null;
     this.notifyAccountCount = 0;
@@ -310,6 +311,9 @@ class RuntimeSupervisor extends EventEmitter {
       : {};
     if (oneShotEnv.QIANFAN_SIM_CRASH_ON_READY) {
       this.pendingCrashWorkers.delete(workerName);
+    }
+    if (this.pendingWechatManualPrepared && WECHAT_BOOT_ORDER.includes(workerName)) {
+      oneShotEnv.WECHAT_MANUAL_PREPARED = '1';
     }
 
     this.state.setWorkerStatus(workerName, { status: 'starting', startTime: Date.now(), lastError: '' });
@@ -842,12 +846,16 @@ class RuntimeSupervisor extends EventEmitter {
     }
   }
 
-  async startAll() {
+  async startAll(options = {}) {
     if (this.startAllPromise) return this.startAllPromise;
 
     const current = this.state.supervisorStatus;
     if (current === 'running' || current === 'starting') {
       return this.getStatus();
+    }
+
+    if (options.wechatManualPrepared === true) {
+      this.pendingWechatManualPrepared = true;
     }
 
     this.startAllInProgress = true;
@@ -888,6 +896,7 @@ class RuntimeSupervisor extends EventEmitter {
       return { ok: true };
     } finally {
       this.wechatBootInProgress = false;
+      this.pendingWechatManualPrepared = false;
     }
   }
 
@@ -986,6 +995,7 @@ class RuntimeSupervisor extends EventEmitter {
     this.clearStatusKeepaliveTimer();
     this.wechatBootCompleted = false;
     this.wechatBootInProgress = false;
+    this.pendingWechatManualPrepared = false;
     this.healthStatusSnapshot = null;
     this.state.setSupervisorStatus('stopping');
     this.emitStatus();

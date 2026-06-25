@@ -61,16 +61,42 @@ async function prepareWechatRuntime(options = {}) {
 
     const evaluation = await evaluateWxbotHealth();
     if (evaluation.wrongLogin) {
-      blockWrongLoginRecovery(evaluation.report, 'boot');
+      blockWrongLoginRecovery(evaluation.report, options.reason || 'boot');
       return fail(
         new Error(evaluation.report?.reason || '当前登录微信不是机器人号'),
         'WECHAT_WRONG_LOGIN',
       );
     }
 
-    if (evaluation.healthy) {
+    if (options.reuseOnly) {
+      if (evaluation.healthy) {
+        await syncWxbotCallbackConfig();
+        return ok({ report: evaluation.report, reused: true, reuseOnly: true });
+      }
+    } else if (evaluation.healthy) {
       await syncWxbotCallbackConfig();
       return ok({ report: evaluation.report, reused: true });
+    }
+
+    if (options.forceRecover) {
+      const recovered = await recoverWechatRuntime(options.reason || 'manual_start', {
+        maxWaitMs: options.maxWaitMs,
+        force: true,
+        onPhase: options.onPhase,
+      });
+
+      if (recovered.blocked) {
+        return fail(new Error(recovered.reason || '微信登录账号不匹配'), recovered.code || 'WECHAT_WRONG_LOGIN');
+      }
+      if (!recovered.ok) {
+        return fail(
+          new Error(recovered.reason || '微信未就绪'),
+          recovered.code || 'WECHAT_NOT_READY',
+        );
+      }
+
+      wxbotStartedByRuntime = true;
+      return ok({ report: recovered.report, recovered: true });
     }
 
     if (isDistributedRuntime() && evaluation.report?.apiOk && !options.forceRecover) {

@@ -14,12 +14,18 @@ const { stopRuntimeChildProcesses } = require('../shared/runtime-process-cleanup
 const { formatActivityLogEntry } = require('../shared/activity-log');
 const { formatLogTime } = require('../shared/user-activity-log');
 const { isRoutineHealthActivityMessage } = require('../shared/runtime-health');
+const {
+  recoverWechatRuntime,
+  isWrongLoginBlocked,
+  readWechatRuntimeState,
+} = require('../wechat/wechat-runtime-recovery');
 
 const ROOT = config.root;
 const CONFIG_FILE = path.join(ROOT, 'config.wxbot-new.json');
 
 let runtimeSupervisor = null;
 let statusPushBound = false;
+let relayStartInProgress = false;
 
 function getPaths() {
   const logsDir = path.join(ROOT, 'logs');
@@ -59,7 +65,57 @@ async function preflightLaunchQianfanViaCmd() {
   return { ok: true, ...result };
 }
 
+async function manualPrepareWechatForRelay() {
+  if (isWrongLoginBlocked()) {
+    const state = readWechatRuntimeState();
+    return {
+      ok: false,
+      blocked: true,
+      code: 'WECHAT_WRONG_LOGIN_BLOCKED',
+      reason: state.wrongLoginReason
+        || '微信登录 wxid 不匹配，已停止自动恢复。请退出当前微信并扫码登录机器人号后再启动中转。',
+    };
+  }
+
+  safePush('runtime:log', {
+    level: 'info',
+    message: '正在冷启动微信（结束旧进程并重新注入 wxbot）…',
+    workerName: 'wechat-callback',
+    time: Date.now(),
+  });
+
+  const recovered = await recoverWechatRuntime('manual_start', { force: true });
+  if (recovered.blocked) {
+    return {
+      ok: false,
+      blocked: true,
+      code: recovered.code || 'WECHAT_WRONG_LOGIN',
+      reason: recovered.reason
+        || '当前登录微信不是机器人号。请退出微信并扫码登录机器人号后再启动中转。',
+      report: recovered.report,
+    };
+  }
+  if (!recovered.ok) {
+    return {
+      ok: false,
+      code: recovered.code || 'WECHAT_NOT_READY',
+      reason: recovered.reason || '微信未就绪，请确认微信已登录并完成注入',
+      report: recovered.report,
+    };
+  }
+  return { ok: true, report: recovered.report, recovered: true };
+}
+
 async function startRuntimeWithQianfanPreflight() {
+  if (relayStartInProgress) {
+    return {
+      ok: false,
+      status: 'starting',
+      message: '正在启动中转，请稍候…',
+      inProgress: true,
+    };
+  }
+
   if (!fs.existsSync(config.wxbotExe)) {
     return { ok: false, status: 'failed', message: `未找到 wxbot.exe：${config.wxbotExe}` };
   }
@@ -76,20 +132,45 @@ async function startRuntimeWithQianfanPreflight() {
     };
   }
 
-  const qianfanResult = await preflightLaunchQianfanViaCmd();
-  if (!qianfanResult.ok) {
-    const message = qianfanResult.lastError || '千帆未能自动启动，请检查安装路径';
-    return { ok: false, status: 'failed', message, qianfanResult };
-  }
+  relayStartInProgress = true;
+  try {
+    safePush('runtime:log', {
+      level: 'info',
+      message: '正在检查千帆 DevTools…',
+      workerName: 'qianfan-listener',
+      time: Date.now(),
+    });
 
-  const status = await supervisor.startAll();
-  return {
-    ok: true,
-    status: 'starting',
-    message: '千帆已启动，正在等待就绪后启动微信…',
-    runtime: status,
-    qianfanResult,
-  };
+    const qianfanResult = await preflightLaunchQianfanViaCmd();
+    if (!qianfanResult.ok) {
+      const message = qianfanResult.lastError || '千帆未能自动启动，请检查安装路径';
+      return { ok: false, status: 'failed', message, qianfanResult };
+    }
+
+    const wechatResult = await manualPrepareWechatForRelay();
+    if (!wechatResult.ok) {
+      return {
+        ok: false,
+        status: wechatResult.blocked ? 'failed' : 'failed',
+        message: wechatResult.reason || '微信冷启动失败',
+        wechatResult,
+        qianfanResult,
+        code: wechatResult.code,
+      };
+    }
+
+    const status = await supervisor.startAll({ wechatManualPrepared: true });
+    return {
+      ok: true,
+      status: 'starting',
+      message: '千帆与微信已就绪，正在启动 worker 主链路…',
+      runtime: status,
+      qianfanResult,
+      wechatResult,
+    };
+  } finally {
+    relayStartInProgress = false;
+  }
 }
 
 function getSupervisor() {
