@@ -449,7 +449,7 @@ function findReceiverCacheForShop(shopTitle, buyerNick = '') {
       receiverAppUids: [...uids],
     };
     if (nick && ctx?.buyerNick && buyerNickMatches(ctx.buyerNick, nick)) return hit;
-    if (!fallback) fallback = hit;
+    if (!nick && !fallback) fallback = hit;
   }
 
   if (!fallback && nick) {
@@ -471,7 +471,7 @@ function findReceiverCacheForShop(shopTitle, buyerNick = '') {
     }
   }
 
-  return fallback;
+  return nick ? null : fallback;
 }
 
 function resolvePendingReply(options = {}) {

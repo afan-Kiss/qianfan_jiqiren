@@ -280,7 +280,7 @@ const qianfanDebug = {
       ? String(process.env.QIANFAN_SEND_ONLY_BUYER_NICK).trim()
       : Object.prototype.hasOwnProperty.call(qianfanDebugFile, 'sendOnlyBuyerNick')
         ? String(qianfanDebugFile.sendOnlyBuyerNick || '').trim()
-        : '饭饭',
+        : '',
   root: ROOT,
 };
 

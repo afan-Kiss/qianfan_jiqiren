@@ -785,7 +785,7 @@ function pickBuyerMessageForNick(messages, buyerNick) {
   if (!list.length) return null;
   if (nick) {
     const matched = list.filter((msg) => buyerNickMatches(msg?.buyerNick, nick));
-    if (matched.length) return matched[matched.length - 1];
+    return matched.length ? matched[matched.length - 1] : null;
   }
   const buyers = list.filter((msg) => String(msg?.senderType || '').toUpperCase() === 'CUSTOMER' || String(msg?.senderAppUid || '').includes('#2#2#'));
   return buyers.length ? buyers[buyers.length - 1] : list[list.length - 1];
@@ -2019,6 +2019,10 @@ function resolveReplyContextFromBridge(shopTitle, buyerNick = '') {
   const activeCids = getBridgeActiveAppCids(bridge);
   if (activeCids.length === 1) {
     const appCid = activeCids[0];
+    const ctx = getSessionContext(shopKey, appCid);
+    if (nick && ctx?.buyerNick && !buyerNickMatches(ctx.buyerNick, nick)) {
+      return null;
+    }
     const manual = bridge.lastManualSendByAppCid.get(appCid);
     const receiverAppUids = manual?.receiverAppUids?.length
       ? manual.receiverAppUids
@@ -2027,7 +2031,7 @@ function resolveReplyContextFromBridge(shopTitle, buyerNick = '') {
       return {
         shopTitle: shopKey,
         appCid,
-        buyerNick: nick || '买家',
+        buyerNick: String(ctx?.buyerNick || nick || '买家').trim(),
         receiverAppUids,
       };
     }
@@ -2042,6 +2046,27 @@ async function resolveReplyContextForSend(shopTitle, buyerNick = '', appCidHint 
   const hintedAppCid = String(appCidHint || '').trim();
   const bridge = findBridgeByShopTitle(shopTitle);
   if (!bridge) return null;
+
+  if (hintedAppCid) {
+    const fetched = await fetchMessageListForAppCid(bridge, hintedAppCid);
+    if (fetched.ok) {
+      const messages = extractMessagesFromResponse(fetched.body, shopKey);
+      const picked = pickBuyerMessageForNick(messages, nick);
+      const fromMessage = buildReplyContextFromMessage(shopKey, picked);
+      if (fromMessage) {
+        rememberReceiverAppUids(shopKey, fromMessage.appCid, fromMessage.receiverAppUids);
+        saveSessionContext({
+          shopTitle: shopKey,
+          appCid: fromMessage.appCid,
+          buyerNick: fromMessage.buyerNick,
+          senderAppUid: fromMessage.receiverAppUids[0],
+          receiverAppUids: fromMessage.receiverAppUids,
+          createAt: Date.now(),
+        });
+        return fromMessage;
+      }
+    }
+  }
 
   if (nick) {
     const batch = await fetchMessageListRaw(bridge);
@@ -2065,23 +2090,15 @@ async function resolveReplyContextForSend(shopTitle, buyerNick = '', appCidHint 
   }
 
   if (hintedAppCid) {
-    const fetched = await fetchMessageListForAppCid(bridge, hintedAppCid);
-    if (fetched.ok) {
-      const messages = extractMessagesFromResponse(fetched.body, shopKey);
-      const picked = pickBuyerMessageForNick(messages, nick);
-      const fromMessage = buildReplyContextFromMessage(shopKey, picked);
-      if (fromMessage) {
-        rememberReceiverAppUids(shopKey, fromMessage.appCid, fromMessage.receiverAppUids);
-        saveSessionContext({
-          shopTitle: shopKey,
-          appCid: fromMessage.appCid,
-          buyerNick: fromMessage.buyerNick,
-          senderAppUid: fromMessage.receiverAppUids[0],
-          receiverAppUids: fromMessage.receiverAppUids,
-          createAt: Date.now(),
-        });
-        return fromMessage;
-      }
+    const receiverAppUids = getReceiverAppUids(shopKey, hintedAppCid);
+    if (receiverAppUids.length) {
+      const ctx = getSessionContext(shopKey, hintedAppCid);
+      return {
+        shopTitle: shopKey,
+        appCid: hintedAppCid,
+        buyerNick: String(ctx?.buyerNick || nick || '买家').trim(),
+        receiverAppUids,
+      };
     }
   }
 
@@ -2121,6 +2138,7 @@ module.exports = {
   fetchMessageListForAppCid,
   getBridgeActiveAppCids,
   isBridgeCdpReady,
+  waitForBridgeCdpReady,
   markBridgeCdpClosed,
   sendQianfanTextReply,
   findBridgeByShopTitle,

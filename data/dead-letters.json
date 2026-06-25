@@ -1,0 +1,150 @@
+[
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780896710141
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780897685371
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780897886891
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780898846959
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780908031277
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780917412956
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780919164936
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1780971428007
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1781006496478
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1781270426111
+  },
+  {
+    "traceId": "t1",
+    "topic": "test",
+    "workerName": "test",
+    "reason": "test",
+    "payload": {},
+    "createdAt": 1781358353913
+  },
+  {
+    "traceId": "95ec8aaa50ba911f",
+    "topic": "qianfan.send.result",
+    "workerName": "qianfan-sender",
+    "reason": "千帆尚未就绪，请稍候再引用回复",
+    "payload": {
+      "success": false,
+      "replyId": 1093,
+      "fromWxid": "wxid_jr6nn7q8lezg12",
+      "traceId": "95ec8aaa50ba911f",
+      "request": {
+        "replyId": 1093,
+        "replyText": "您好，有的，您的v",
+        "mode": "quote",
+        "wxMsgId": "9001436403524383005",
+        "pending": {
+          "replyCount": 0,
+          "replyId": 1093,
+          "shopTitle": "和田雅玉",
+          "appCid": "$3$MSMyIzIjNWU1MGVmMzEwMDAwMDAwMDAxMDAzM2Fj.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0",
+          "buyerNick": "罗本",
+          "buyerMsgId": "67bde337b1b8c36daa36a963",
+          "buyerText": "有和田玉的方镯吗",
+          "contentType": "text",
+          "createdAt": 1782269665139,
+          "receiverAppUids": [
+            "1#2#2#5e50ef3100000000010033ac"
+          ],
+          "wechatTargets": [
+            "wxid_jr6nn7q8lezg12"
+          ],
+          "status": "notified",
+          "notifiedAt": 1782269669864
+        },
+        "receiverAppUids": [
+          "1#2#2#5e50ef3100000000010033ac"
+        ],
+        "fromWxid": "wxid_jr6nn7q8lezg12",
+        "traceId": "95ec8aaa50ba911f",
+        "idempotencyKey": "qianfan-send:1093:9b431d5a9154c395"
+      },
+      "result": {
+        "ok": false,
+        "error": {
+          "message": "千帆尚未就绪，请稍候再引用回复",
+          "stack": "Error: 千帆尚未就绪，请稍候再引用回复\n    at sendQianfanReplyRequest (E:\\我的软件源码\\千帆中转机器人\\src\\adapters\\legacy-qianfan-sender-adapter.js:84:19)\n    at E:\\我的软件源码\\千帆中转机器人\\src\\workers\\qianfan-listener.worker.js:15:24\n    at dispatchBusMessage (E:\\我的软件源码\\千帆中转机器人\\src\\workers\\worker-bootstrap.js:213:23)\n    at process.<anonymous> (E:\\我的软件源码\\千帆中转机器人\\src\\workers\\worker-bootstrap.js:288:7)\n    at process.emit (node:events:519:28)\n    at emit (node:internal/child_process:951:14)\n    at process.processTicksAndRejections (node:internal/process/task_queues:83:21)",
+          "code": "LISTENER_NOT_READY"
+        }
+      },
+      "error": {
+        "message": "千帆尚未就绪，请稍候再引用回复",
+        "code": "LISTENER_NOT_READY"
+      }
+    },
+    "error": {
+      "message": "千帆尚未就绪，请稍候再引用回复",
+      "code": "LISTENER_NOT_READY"
+    },
+    "createdAt": 1782296102042
+  }
+]

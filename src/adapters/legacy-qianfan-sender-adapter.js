@@ -1,13 +1,24 @@
 const config = require('../wechat/wxbot-new-config');
 const { sendWxText } = require('../wechat-send-api');
-const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextForSend, isBridgeCdpReady } = require('../qianfan-ws-bridge');
+const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextForSend, isBridgeCdpReady, waitForBridgeCdpReady } = require('../qianfan-ws-bridge');
 const { isBuyerListenerActive } = require('./legacy-qianfan-listener-adapter');
+const { buyerNickMatches } = require('../qianfan-data-store');
 const { withTimeout } = require('../cdp-timeout');
 const { ok, fail } = require('./adapter-result');
 const { println } = require('../utils');
+const { agentDebugLog } = require('../shared/agent-debug-log');
 
 const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 36000;
+const BRIDGE_READY_RETRY_MS = 5000;
 const isDistributed = () => process.env.QIANFAN_DISTRIBUTED_RUNTIME === '1';
+
+function hasCompletePendingSendContext(pending) {
+  return Boolean(
+    pending?.appCid &&
+    Array.isArray(pending.receiverAppUids) &&
+    pending.receiverAppUids.filter(Boolean).length,
+  );
+}
 
 function formatQianfanSendErrorMessage(message) {
   const reason = String(message || '');
@@ -44,6 +55,28 @@ async function sendFailureReceipt({ replyId, pending, reason, text, fromWxid }) 
   return ok({ sent: true, kind: 'failure_receipt' });
 }
 
+function formatSuccessReceipt(replyId, pending, text, isAppend = false) {
+  const head = isAppend ? `✅ 已追加回复 #${replyId}` : `✅ 已回复 #${replyId}`;
+  return [head, `店铺：${pending.shopTitle}`, `买家：${pending.buyerNick || '买家'}`, `内容：${text}`].join('\n');
+}
+
+async function sendSuccessReceipt({ replyId, pending, text, fromWxid, isAppend = false }) {
+  const wxid = fromWxid || config.authorizedReplyWxid || config.notifyReceiverAccount?.wxid;
+  if (!wxid || config.dryRun) return ok({ skipped: true });
+  const content = formatSuccessReceipt(replyId, pending, text, isAppend);
+  await sendWxText(wxid, content);
+  return ok({ sent: true, kind: 'success_receipt' });
+}
+
+function isLiveContextCompatibleWithPending(pending, live) {
+  if (!live || !pending) return false;
+  const pendingNick = String(pending.buyerNick || '').trim();
+  const liveNick = String(live.buyerNick || '').trim();
+  if (pendingNick && liveNick && !buyerNickMatches(pendingNick, liveNick)) return false;
+  if (pending.appCid && live.appCid && pending.appCid !== live.appCid) return false;
+  return true;
+}
+
 async function sendQianfanReplyRequest(request = {}) {
   let {
     replyId,
@@ -75,8 +108,18 @@ async function sendQianfanReplyRequest(request = {}) {
       return fail(new Error(reason), 'SHOP_NOT_ATTACHED');
     }
 
-    const bridge = findBridgeByShopTitle(pending.shopTitle);
-    if (!isBuyerListenerActive() || !isBridgeCdpReady(bridge)) {
+    let bridge = findBridgeByShopTitle(pending.shopTitle);
+    if (!isBuyerListenerActive()) {
+      println('[千帆发送] 买家监听句柄未就绪，继续尝试发送（以店铺 CDP 为准）');
+    }
+
+    if (!isBridgeCdpReady(bridge)) {
+      bridge =
+        (await waitForBridgeCdpReady(pending.shopTitle, BRIDGE_READY_RETRY_MS)) ||
+        findBridgeByShopTitle(pending.shopTitle) ||
+        bridge;
+    }
+    if (!isBridgeCdpReady(bridge)) {
       const reason = '千帆尚未就绪，请稍候再引用回复';
       if (!isDistributed()) {
         await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
@@ -84,23 +127,34 @@ async function sendQianfanReplyRequest(request = {}) {
       return fail(new Error(reason), 'LISTENER_NOT_READY');
     }
 
-    try {
-      const live = await withTimeout(
-        resolveReplyContextForSend(pending.shopTitle, pending.buyerNick, pending.appCid),
-        12000,
-        'resolveReplyContextForSend',
+    if (hasCompletePendingSendContext(pending)) {
+      receiverAppUids = pending.receiverAppUids.filter(Boolean);
+      println(
+        `[千帆发送] 使用 pending 会话：买家=${pending.buyerNick || '买家'} appCid=${pending.appCid}`,
       );
-      if (live) {
-        pending = {
-          ...pending,
-          appCid: live.appCid || pending.appCid,
-          buyerNick: live.buyerNick || pending.buyerNick,
-          receiverAppUids: live.receiverAppUids?.length ? live.receiverAppUids : pending.receiverAppUids,
-        };
-        receiverAppUids = pending.receiverAppUids;
+    } else {
+      try {
+        const live = await withTimeout(
+          resolveReplyContextForSend(pending.shopTitle, pending.buyerNick, pending.appCid),
+          12000,
+          'resolveReplyContextForSend',
+        );
+        if (live && isLiveContextCompatibleWithPending(pending, live)) {
+          pending = {
+            ...pending,
+            appCid: live.appCid || pending.appCid,
+            buyerNick: live.buyerNick || pending.buyerNick,
+            receiverAppUids: live.receiverAppUids?.length ? live.receiverAppUids : pending.receiverAppUids,
+          };
+          receiverAppUids = pending.receiverAppUids;
+        } else if (live) {
+          println(
+            `[千帆发送] 忽略 HTTP 会话解析：与 pending 不一致 pending=${pending.buyerNick}/${pending.appCid} live=${live.buyerNick}/${live.appCid}`,
+          );
+        }
+      } catch (err) {
+        println(`[千帆发送] 实时会话解析失败，使用 pending 上下文：${err.message || err}`);
       }
-    } catch (err) {
-      println(`[千帆发送] 实时会话解析失败，使用 pending 上下文：${err.message || err}`);
     }
 
     if (!pending.appCid) {
@@ -118,6 +172,20 @@ async function sendQianfanReplyRequest(request = {}) {
       }
       return fail(new Error(reason), 'MISSING_RECEIVER');
     }
+
+    agentDebugLog({
+      location: 'legacy-qianfan-sender-adapter.js:pre-send',
+      message: 'send context resolved',
+      hypothesisId: 'H1',
+      data: {
+        replyId,
+        buyerNick: pending.buyerNick || '',
+        appCid: pending.appCid || '',
+        receiverAppUids: receiverAppUids || [],
+        usedPendingContext: hasCompletePendingSendContext(request.pending || pending),
+        sendGuardEnabled: Boolean(require('../qianfan-send-guard').getSendOnlyBuyerNick()),
+      },
+    });
 
     const ack = await withTimeout(
       sendQianfanTextReply({
@@ -162,5 +230,8 @@ async function sendQianfanReplyRequest(request = {}) {
 module.exports = {
   sendQianfanReplyRequest,
   sendFailureReceipt,
+  sendSuccessReceipt,
+  formatFailureReceipt,
+  formatSuccessReceipt,
   formatQianfanSendErrorMessage,
 };

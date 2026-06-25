@@ -17,6 +17,6 @@
     "closeWaitMs": 2000,
     "wsWakeBuyerNick": "饭饭",
     "wsWakeText": "亲亲",
-    "sendOnlyBuyerNick": "饭饭"
+    "sendOnlyBuyerNick": ""
   }
 }

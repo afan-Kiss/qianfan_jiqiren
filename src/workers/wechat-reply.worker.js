@@ -1,6 +1,6 @@
 const { createWorkerRuntime } = require('./worker-bootstrap');
 const { parseWechatReplyContent } = require('../adapters/legacy-wechat-reply-adapter');
-const { sendFailureReceipt } = require('../adapters/legacy-qianfan-sender-adapter');
+const { sendFailureReceipt, sendSuccessReceipt } = require('../adapters/legacy-qianfan-sender-adapter');
 const config = require('../wechat/wxbot-new-config');
 const { isAuthorizedReplyWxid, getAuthorizedReplyWxids } = config;
 const {
@@ -23,6 +23,8 @@ const {
   formatReplySuccessMessage,
   formatReplyFailureMessage,
 } = require('../shared/user-activity-log');
+const { agentDebugLog } = require('../shared/agent-debug-log');
+const { hasSuccessfulReplyForReplyId } = require('../qianfan-data-store');
 
 const runtime = createWorkerRuntime({ workerName: 'wechat-reply' });
 
@@ -97,6 +99,36 @@ async function sendFailureReceiptWithDedup({
     runtime.log('error', `failure receipt send failed: ${err.message}`, { traceId });
   }
 }
+
+async function sendSuccessReceiptToWechat({ replyId, pending, text, fromWxid, traceId }) {
+  const receiverWxid = resolveReceiverWxid(fromWxid);
+  if (!receiverWxid || config.dryRun) return;
+
+  const isAppend = hasSuccessfulReplyForReplyId(replyId);
+  try {
+    await sendSuccessReceipt({
+      replyId,
+      pending,
+      text,
+      fromWxid: receiverWxid,
+      isAppend,
+    });
+    agentDebugLog({
+      location: 'wechat-reply.worker.js:success-receipt',
+      message: 'wechat success receipt sent',
+      hypothesisId: 'H2',
+      data: { replyId, buyerNick: pending?.buyerNick || '', isAppend },
+    });
+  } catch (err) {
+    runtime.log('error', `success receipt send failed: ${err.message}`, { traceId });
+  }
+}
+
+const SKIPPED_FAILURE_REASONS = {
+  send_in_flight: '上一条回复仍在发送中，请稍候再试',
+  persist_failed: '系统繁忙，请稍后重试',
+  send_not_created: '发送未能创建，请稍后重试',
+};
 
 runtime.onTopic('wechat.reply.received', async (payload, meta) => {
   const traceId = meta.traceId || runtime.newTraceId();
@@ -274,8 +306,8 @@ runtime.onTopic('wechat.reply.received', async (payload, meta) => {
 
 runtime.onTopic('qianfan.send.result', async (payload, meta) => {
   const traceId = meta.traceId || payload.traceId;
+  const request = payload.request || {};
   if (payload.success) {
-    const request = payload.request || {};
     const replyId = request.replyId || payload.replyId;
     runtime.userLog(
       formatReplySuccessMessage({
@@ -286,6 +318,19 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
       }),
       { dedupKey: `send-ok:${replyId || traceId}` },
     );
+    await sendSuccessReceiptToWechat({
+      replyId,
+      pending: request.pending,
+      text: request.replyText || request.text || '',
+      fromWxid: request.fromWxid || payload.fromWxid,
+      traceId,
+    });
+    agentDebugLog({
+      location: 'wechat-reply.worker.js:send-result',
+      message: 'qianfan send success',
+      hypothesisId: 'H2',
+      data: { replyId, buyerNick: request.pending?.buyerNick || '' },
+    });
     return;
   }
 
@@ -296,26 +341,40 @@ runtime.onTopic('qianfan.send.result', async (payload, meta) => {
   );
 
   if (payload.skipped) {
-    const request = payload.request || {};
     const reason = String(payload.reason || '');
-    if (reason === 'send_in_flight') {
+    const failText = SKIPPED_FAILURE_REASONS[reason];
+    agentDebugLog({
+      location: 'wechat-reply.worker.js:send-skipped',
+      message: 'qianfan send skipped',
+      hypothesisId: 'H4',
+      data: { replyId: payload.replyId || request.replyId, reason },
+    });
+    if (failText) {
       runtime.userLog(
         formatReplyFailureMessage({
           replyId: payload.replyId || request.replyId,
           fromWxid: request.fromWxid || payload.fromWxid,
           pending: request.pending,
-          reason: '上一条回复仍在发送中，请稍候再试',
+          reason: failText,
         }),
         {
-          dedupKey: `send-in-flight:${payload.replyId || request.replyId || traceId}`,
-          level: 'warn',
+          dedupKey: `send-skipped:${payload.replyId || request.replyId || traceId}:${reason}`,
+          level: reason === 'send_in_flight' ? 'warn' : 'error',
         },
       );
+      await sendFailureReceiptWithDedup({
+        replyId: payload.replyId || request.replyId,
+        pending: request.pending,
+        reason: failText,
+        text: request.replyText || request.text || '',
+        fromWxid: request.fromWxid || payload.fromWxid,
+        traceId,
+        errorCodeOrType: reason.toUpperCase(),
+      });
     }
     return;
   }
 
-  const request = payload.request || {};
   runtime.userLog(
     formatReplyFailureMessage({
       replyId: payload.replyId || request.replyId,

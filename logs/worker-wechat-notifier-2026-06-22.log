@@ -1,0 +1,592 @@
+[2026-06-21T23:31:43.416Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb21a2664f569ef69765d6 dedupKey=祥钰珠宝::$3$MSMyIzIjNjAyMTNhZmQwMDAwMDAwMDAxMDA1NWZk.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2::id::67bb21a2664f569ef69765d6 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-21T23:31:43.417Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb21a2664f569ef69765d6 dedupKey=祥钰珠宝::$3$MSMyIzIjNjAyMTNhZmQwMDAwMDAwMDAxMDA1NWZk.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2::id::67bb21a2664f569ef69765d6 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-21T23:31:46.434Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=祥钰珠宝 买家=饭饭 appCid=$3$MSMyIzIjNjAyMTNhZmQwMDAwMDAwMDAxMDA1NWZk.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2 receiverAppUids=["1#2#2#60213afd00000000010055fd"]
+[2026-06-21T23:31:46.435Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=祥钰珠宝 买家=饭饭 appCid=$3$MSMyIzIjNjAyMTNhZmQwMDAwMDAwMDAxMDA1NWZk.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2 receiverAppUids=["1#2#2#60213afd00000000010055fd"]
+[2026-06-21T23:31:46.437Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1016 msgId=67bb21a2664f569ef69765d6
+[2026-06-21T23:31:46.438Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1016 msgId=67bb21a2664f569ef69765d6
+[2026-06-21T23:31:46.439Z] [info] [wechat-notifier] [微信发送] 07:31:46 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1016】 店铺：祥钰珠宝 买家：饭饭 时间：07:31:40 消息：6695959 ┈ 引用本消息回复
+[2026-06-21T23:31:46.439Z] [info] [wechat-notifier] [微信发送] 07:31:46 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1016】 店铺：祥钰珠宝 买家：饭饭 时间：07:31:40 消息：6695959 ┈ 引用本消息回复
+[2026-06-21T23:31:46.450Z] [info] [wechat-notifier] [通知] #1016 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1016 msgId=67bb21a2664f569ef69765d6
+[诊断] notify-send-ok replyId=#1016 msgId=67bb21a2664f569ef69765d6
+[2026-06-21T23:31:46.451Z] [info] [wechat-notifier] [通知] #1016 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1016 msgId=67bb21a2664f569ef69765d6
+[诊断] notify-send-ok replyId=#1016 msgId=67bb21a2664f569ef69765d6
+[2026-06-22T02:13:12.974Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4698cba3a7bda699eb66 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4698cba3a7bda699eb66 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:12.975Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4698cba3a7bda699eb66 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4698cba3a7bda699eb66 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:16.000Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:13:16.001Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:13:16.003Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1017 msgId=67bb4698cba3a7bda699eb66
+[2026-06-22T02:13:16.004Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1017 msgId=67bb4698cba3a7bda699eb66
+[2026-06-22T02:13:16.004Z] [info] [wechat-notifier] [微信发送] 10:13:16 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1017】 店铺：拾玉居和田玉 买家：开心就好 时间：10:13:10 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:13:16.005Z] [info] [wechat-notifier] [微信发送] 10:13:16 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1017】 店铺：拾玉居和田玉 买家：开心就好 时间：10:13:10 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:13:16.007Z] [info] [wechat-notifier] [通知] #1017 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1017 msgId=67bb4698cba3a7bda699eb66
+[诊断] notify-send-ok replyId=#1017 msgId=67bb4698cba3a7bda699eb66
+[2026-06-22T02:13:16.008Z] [info] [wechat-notifier] [通知] #1017 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1017 msgId=67bb4698cba3a7bda699eb66
+[诊断] notify-send-ok replyId=#1017 msgId=67bb4698cba3a7bda699eb66
+[2026-06-22T02:13:16.229Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1017
+[2026-06-22T02:13:16.230Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1017
+[2026-06-22T02:13:24.079Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46a3d11915fad9e492ce dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46a3d11915fad9e492ce alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:24.080Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46a3d11915fad9e492ce dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46a3d11915fad9e492ce alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:27.096Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:13:27.096Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:13:27.099Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1018 msgId=67bb46a3d11915fad9e492ce
+[2026-06-22T02:13:27.099Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1018 msgId=67bb46a3d11915fad9e492ce
+[2026-06-22T02:13:27.100Z] [info] [wechat-notifier] [微信发送] 10:13:27 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1018】 店铺：拾玉居和田玉 买家：开心就好 时间：10:13:22 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:13:27.100Z] [info] [wechat-notifier] [微信发送] 10:13:27 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1018】 店铺：拾玉居和田玉 买家：开心就好 时间：10:13:22 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:13:27.102Z] [info] [wechat-notifier] [通知] #1018 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1018 msgId=67bb46a3d11915fad9e492ce
+[2026-06-22T02:13:27.102Z] [info] [wechat-notifier] [通知] #1018 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1018 msgId=67bb46a3d11915fad9e492ce
+[2026-06-22T02:13:27.643Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1018
+[2026-06-22T02:13:27.643Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1018
+[2026-06-22T02:13:28.943Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46a7c774069ac62013bd dedupKey=和田雅玉::$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb46a7c774069ac62013bd alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:28.944Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46a7c774069ac62013bd dedupKey=和田雅玉::$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb46a7c774069ac62013bd alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:31.972Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=🍠河南区小宇 appCid=$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#6a2631b40000000004031804"]
+[2026-06-22T02:13:31.973Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=🍠河南区小宇 appCid=$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#6a2631b40000000004031804"]
+[2026-06-22T02:13:31.976Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1019 msgId=67bb46a7c774069ac62013bd
+[微信发送] 10:13:31 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1019】 店铺：和田雅玉 买家：🍠河南区小宇 时间：10:13:25 消息：老板您好，这边是小红书官方推流的我看您一直在坚持发小红书笔记，您对目前笔记的流量还满意吗？ 今年小红书各大专区商品搜索直播间点击都有明显上升，您...
+[2026-06-22T02:13:31.976Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1019 msgId=67bb46a7c774069ac62013bd
+[微信发送] 10:13:31 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1019】 店铺：和田雅玉 买家：🍠河南区小宇 时间：10:13:25 消息：老板您好，这边是小红书官方推流的我看您一直在坚持发小红书笔记，您对目前笔记的流量还满意吗？ 今年小红书各大专区商品搜索直播间点击都有明显上升，您...
+[2026-06-22T02:13:31.979Z] [info] [wechat-notifier] [通知] #1019 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1019 msgId=67bb46a7c774069ac62013bd
+[诊断] notify-send-ok replyId=#1019 msgId=67bb46a7c774069ac62013bd
+[2026-06-22T02:13:31.980Z] [info] [wechat-notifier] [通知] #1019 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1019 msgId=67bb46a7c774069ac62013bd
+[诊断] notify-send-ok replyId=#1019 msgId=67bb46a7c774069ac62013bd
+[2026-06-22T02:13:37.271Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46b1901b7a98b6e1f37d dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46b1901b7a98b6e1f37d alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:37.272Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46b1901b7a98b6e1f37d dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46b1901b7a98b6e1f37d alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:13:40.299Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:13:40.300Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:13:40.302Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1020 msgId=67bb46b1901b7a98b6e1f37d
+[2026-06-22T02:13:40.303Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1020 msgId=67bb46b1901b7a98b6e1f37d
+[2026-06-22T02:13:40.303Z] [info] [wechat-notifier] [微信发送] 10:13:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1020】 店铺：拾玉居和田玉 买家：开心就好 时间：10:13:35 消息：镯子已收到，但是有点子问题 ┈ 引用本消息回复
+[2026-06-22T02:13:40.304Z] [info] [wechat-notifier] [微信发送] 10:13:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1020】 店铺：拾玉居和田玉 买家：开心就好 时间：10:13:35 消息：镯子已收到，但是有点子问题 ┈ 引用本消息回复
+[2026-06-22T02:13:40.305Z] [info] [wechat-notifier] [通知] #1020 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1020 msgId=67bb46b1901b7a98b6e1f37d
+[2026-06-22T02:13:40.305Z] [info] [wechat-notifier] [通知] #1020 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1020 msgId=67bb46b1901b7a98b6e1f37d
+[2026-06-22T02:14:09.455Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46d0bcafa358f634b1bd dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46d0bcafa358f634b1bd alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:14:09.455Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46d0bcafa358f634b1bd dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46d0bcafa358f634b1bd alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:14:12.477Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:14:12.477Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:14:12.481Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1021 msgId=67bb46d0bcafa358f634b1bd
+[2026-06-22T02:14:12.481Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1021 msgId=67bb46d0bcafa358f634b1bd
+[2026-06-22T02:14:12.482Z] [info] [wechat-notifier] [微信发送] 10:14:12 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1021】 店铺：拾玉居和田玉 买家：开心就好 时间：10:14:07 消息：这里磕碰过 ┈ 引用本消息回复
+[2026-06-22T02:14:12.483Z] [info] [wechat-notifier] [微信发送] 10:14:12 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1021】 店铺：拾玉居和田玉 买家：开心就好 时间：10:14:07 消息：这里磕碰过 ┈ 引用本消息回复
+[2026-06-22T02:14:12.484Z] [info] [wechat-notifier] [通知] #1021 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1021 msgId=67bb46d0bcafa358f634b1bd
+[2026-06-22T02:14:12.484Z] [info] [wechat-notifier] [通知] #1021 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1021 msgId=67bb46d0bcafa358f634b1bd
+[2026-06-22T02:14:40.561Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46ef44d915fad9e49a21 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46ef44d915fad9e49a21 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:14:40.562Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb46ef44d915fad9e49a21 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb46ef44d915fad9e49a21 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:14:43.595Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:14:43.596Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:14:43.598Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1022 msgId=67bb46ef44d915fad9e49a21
+[2026-06-22T02:14:43.599Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1022 msgId=67bb46ef44d915fad9e49a21
+[2026-06-22T02:14:43.599Z] [info] [wechat-notifier] [微信发送] 10:14:43 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1022】 店铺：拾玉居和田玉 买家：开心就好 时间：10:14:38 消息：手摸过去不平整 ┈ 引用本消息回复
+[2026-06-22T02:14:43.600Z] [info] [wechat-notifier] [微信发送] 10:14:43 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1022】 店铺：拾玉居和田玉 买家：开心就好 时间：10:14:38 消息：手摸过去不平整 ┈ 引用本消息回复
+[2026-06-22T02:14:43.601Z] [info] [wechat-notifier] [通知] #1022 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1022 msgId=67bb46ef44d915fad9e49a21
+[2026-06-22T02:14:43.601Z] [info] [wechat-notifier] [通知] #1022 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1022 msgId=67bb46ef44d915fad9e49a21
+[2026-06-22T02:15:20.095Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4715d50766ea36976e49 dedupKey=和田雅玉::$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4715d50766ea36976e49 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:15:20.096Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4715d50766ea36976e49 dedupKey=和田雅玉::$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4715d50766ea36976e49 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:15:23.124Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=🍠河南区小宇 appCid=$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#6a2631b40000000004031804"]
+[2026-06-22T02:15:23.125Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=🍠河南区小宇 appCid=$3$MSMyIzIjNmEyNjMxYjQwMDAwMDAwMDA0MDMxODA0.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#6a2631b40000000004031804"]
+[2026-06-22T02:15:23.128Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1023 msgId=67bb4715d50766ea36976e49
+[2026-06-22T02:15:23.128Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1023 msgId=67bb4715d50766ea36976e49
+[2026-06-22T02:15:23.129Z] [info] [wechat-notifier] [微信发送] 10:15:23 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1023】 店铺：和田雅玉 买家：🍠河南区小宇 时间：10:15:18 消息：我们这边是做平台流量投流的，老板感觉流量不是很理想的话可以做一下投流试试 ┈ 引用本消息回复
+[2026-06-22T02:15:23.130Z] [info] [wechat-notifier] [微信发送] 10:15:23 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1023】 店铺：和田雅玉 买家：🍠河南区小宇 时间：10:15:18 消息：我们这边是做平台流量投流的，老板感觉流量不是很理想的话可以做一下投流试试 ┈ 引用本消息回复
+[2026-06-22T02:15:23.132Z] [info] [wechat-notifier] [通知] #1023 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1023 msgId=67bb4715d50766ea36976e49
+[2026-06-22T02:15:23.132Z] [info] [wechat-notifier] [通知] #1023 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1023 msgId=67bb4715d50766ea36976e49
+[2026-06-22T02:15:36.395Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4725161915fad9e49f65 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4725161915fad9e49f65 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:15:36.396Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4725161915fad9e49f65 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4725161915fad9e49f65 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:15:39.415Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:15:39.416Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:15:39.419Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1024 msgId=67bb4725161915fad9e49f65
+[2026-06-22T02:15:39.419Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1024 msgId=67bb4725161915fad9e49f65
+[2026-06-22T02:15:39.420Z] [info] [wechat-notifier] [微信发送] 10:15:39 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1024】 店铺：拾玉居和田玉 买家：开心就好 时间：10:15:34 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:15:39.420Z] [info] [wechat-notifier] [微信发送] 10:15:39 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1024】 店铺：拾玉居和田玉 买家：开心就好 时间：10:15:34 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:15:39.421Z] [info] [wechat-notifier] [通知] #1024 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1024 msgId=67bb4725161915fad9e49f65
+[2026-06-22T02:15:39.422Z] [info] [wechat-notifier] [通知] #1024 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1024 msgId=67bb4725161915fad9e49f65
+[2026-06-22T02:15:39.854Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1024
+[2026-06-22T02:15:39.855Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1024
+[2026-06-22T02:15:44.461Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb472d8b38c36daa093b1b dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb472d8b38c36daa093b1b alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:15:44.462Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb472d8b38c36daa093b1b dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb472d8b38c36daa093b1b alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:15:47.483Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:15:47.484Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:15:47.486Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1025 msgId=67bb472d8b38c36daa093b1b
+[微信发送] 10:15:47 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1025】 店铺：拾玉居和田玉 买家：开心就好 时间：10:15:42 消息：有个黑点的地方 ┈ 引用本消息回复
+[2026-06-22T02:15:47.487Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1025 msgId=67bb472d8b38c36daa093b1b
+[微信发送] 10:15:47 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1025】 店铺：拾玉居和田玉 买家：开心就好 时间：10:15:42 消息：有个黑点的地方 ┈ 引用本消息回复
+[2026-06-22T02:15:47.489Z] [info] [wechat-notifier] [通知] #1025 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1025 msgId=67bb472d8b38c36daa093b1b
+[2026-06-22T02:15:47.490Z] [info] [wechat-notifier] [通知] #1025 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1025 msgId=67bb472d8b38c36daa093b1b
+[2026-06-22T02:17:10.984Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4780d574069ac6202925 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4780d574069ac6202925 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:17:10.985Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4780d574069ac6202925 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4780d574069ac6202925 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:17:14.011Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:17:14.012Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:17:14.014Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1026 msgId=67bb4780d574069ac6202925
+[微信发送] 10:17:14 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1026】 店铺：拾玉居和田玉 买家：开心就好 时间：10:17:09 消息：[视频] ┈ 引用本消息回复
+[2026-06-22T02:17:14.015Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1026 msgId=67bb4780d574069ac6202925
+[微信发送] 10:17:14 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1026】 店铺：拾玉居和田玉 买家：开心就好 时间：10:17:09 消息：[视频] ┈ 引用本消息回复
+[2026-06-22T02:17:14.018Z] [info] [wechat-notifier] [通知] #1026 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1026 msgId=67bb4780d574069ac6202925
+[2026-06-22T02:17:14.019Z] [info] [wechat-notifier] [通知] #1026 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1026 msgId=67bb4780d574069ac6202925
+[2026-06-22T02:19:40.438Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4813770b0e36f562fb7b dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4813770b0e36f562fb7b alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:19:40.438Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4813770b0e36f562fb7b dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4813770b0e36f562fb7b alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:19:43.473Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:19:43.474Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:19:43.476Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1027 msgId=67bb4813770b0e36f562fb7b
+[2026-06-22T02:19:43.477Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1027 msgId=67bb4813770b0e36f562fb7b
+[2026-06-22T02:19:43.477Z] [info] [wechat-notifier] [微信发送] 10:19:43 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1027】 店铺：拾玉居和田玉 买家：开心就好 时间：10:19:38 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:19:43.478Z] [info] [wechat-notifier] [微信发送] 10:19:43 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1027】 店铺：拾玉居和田玉 买家：开心就好 时间：10:19:38 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:19:43.479Z] [info] [wechat-notifier] [通知] #1027 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1027 msgId=67bb4813770b0e36f562fb7b
+[2026-06-22T02:19:43.479Z] [info] [wechat-notifier] [通知] #1027 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1027 msgId=67bb4813770b0e36f562fb7b
+[2026-06-22T02:19:43.851Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1027
+[2026-06-22T02:19:43.852Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1027
+[2026-06-22T02:20:29.499Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb48440ca64f4e8277962d dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb48440ca64f4e8277962d alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:20:29.500Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb48440ca64f4e8277962d dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb48440ca64f4e8277962d alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:20:32.531Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:20:32.532Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:20:32.534Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1028 msgId=67bb48440ca64f4e8277962d
+[微信发送] 10:20:32 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1028】 店铺：拾玉居和田玉 买家：开心就好 时间：10:20:27 消息：就这个磕碰痕迹 ┈ 引用本消息回复
+[2026-06-22T02:20:32.535Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1028 msgId=67bb48440ca64f4e8277962d
+[微信发送] 10:20:32 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1028】 店铺：拾玉居和田玉 买家：开心就好 时间：10:20:27 消息：就这个磕碰痕迹 ┈ 引用本消息回复
+[2026-06-22T02:20:32.538Z] [info] [wechat-notifier] [通知] #1028 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1028 msgId=67bb48440ca64f4e8277962d
+[2026-06-22T02:20:32.538Z] [info] [wechat-notifier] [通知] #1028 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1028 msgId=67bb48440ca64f4e8277962d
+[2026-06-22T02:28:26.534Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a15f6db7a98b6e24ac3 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a15f6db7a98b6e24ac3 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:28:26.535Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a15f6db7a98b6e24ac3 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a15f6db7a98b6e24ac3 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:28:29.564Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:28:29.565Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:28:29.567Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1029 msgId=67bb4a15f6db7a98b6e24ac3
+[微信发送] 10:28:29 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1029】 店铺：拾玉居和田玉 买家：开心就好 时间：10:28:24 消息：不是矿点吧 ┈ 引用本消息回复
+[2026-06-22T02:28:29.568Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1029 msgId=67bb4a15f6db7a98b6e24ac3
+[微信发送] 10:28:29 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1029】 店铺：拾玉居和田玉 买家：开心就好 时间：10:28:24 消息：不是矿点吧 ┈ 引用本消息回复
+[2026-06-22T02:28:29.570Z] [info] [wechat-notifier] [通知] #1029 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1029 msgId=67bb4a15f6db7a98b6e24ac3
+[2026-06-22T02:28:29.570Z] [info] [wechat-notifier] [通知] #1029 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1029 msgId=67bb4a15f6db7a98b6e24ac3
+[2026-06-22T02:29:28.720Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a52b2cf569ef69a1bf2 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a52b2cf569ef69a1bf2 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:29:28.721Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a52b2cf569ef69a1bf2 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a52b2cf569ef69a1bf2 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:29:31.755Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:29:31.755Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:29:31.758Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1030 msgId=67bb4a52b2cf569ef69a1bf2
+[微信发送] 10:29:31 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1030】 店铺：拾玉居和田玉 买家：开心就好 时间：10:29:27 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:29:31.758Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1030 msgId=67bb4a52b2cf569ef69a1bf2
+[微信发送] 10:29:31 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1030】 店铺：拾玉居和田玉 买家：开心就好 时间：10:29:27 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:29:31.760Z] [info] [wechat-notifier] [通知] #1030 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1030 msgId=67bb4a52b2cf569ef69a1bf2
+[2026-06-22T02:29:31.760Z] [info] [wechat-notifier] [通知] #1030 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1030 msgId=67bb4a52b2cf569ef69a1bf2
+[2026-06-22T02:29:31.825Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1030
+[2026-06-22T02:29:31.825Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1030
+[2026-06-22T02:29:37.839Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a5b9461c44786e24bba dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a5b9461c44786e24bba alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:29:37.840Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a5b9461c44786e24bba dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a5b9461c44786e24bba alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:29:40.872Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:29:40.872Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:29:40.874Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1031 msgId=67bb4a5b9461c44786e24bba
+[微信发送] 10:29:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1031】 店铺：拾玉居和田玉 买家：开心就好 时间：10:29:36 消息：优惠多少？ ┈ 引用本消息回复
+[2026-06-22T02:29:40.875Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1031 msgId=67bb4a5b9461c44786e24bba
+[微信发送] 10:29:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1031】 店铺：拾玉居和田玉 买家：开心就好 时间：10:29:36 消息：优惠多少？ ┈ 引用本消息回复
+[2026-06-22T02:29:40.877Z] [info] [wechat-notifier] [通知] #1031 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1031 msgId=67bb4a5b9461c44786e24bba
+[2026-06-22T02:29:40.877Z] [info] [wechat-notifier] [通知] #1031 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1031 msgId=67bb4a5b9461c44786e24bba
+[2026-06-22T02:30:18.546Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a8344193e877699f3d7 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a8344193e877699f3d7 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:30:18.546Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4a8344193e877699f3d7 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4a8344193e877699f3d7 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:30:21.575Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:30:21.576Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:30:21.578Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1032 msgId=67bb4a8344193e877699f3d7
+[2026-06-22T02:30:21.579Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1032 msgId=67bb4a8344193e877699f3d7
+[2026-06-22T02:30:21.579Z] [info] [wechat-notifier] [微信发送] 10:30:21 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1032】 店铺：拾玉居和田玉 买家：开心就好 时间：10:30:16 消息：算了，我申请售后 ┈ 引用本消息回复
+[2026-06-22T02:30:21.580Z] [info] [wechat-notifier] [微信发送] 10:30:21 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1032】 店铺：拾玉居和田玉 买家：开心就好 时间：10:30:16 消息：算了，我申请售后 ┈ 引用本消息回复
+[2026-06-22T02:30:21.580Z] [info] [wechat-notifier] [通知] #1032 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1032 msgId=67bb4a8344193e877699f3d7
+[2026-06-22T02:30:21.581Z] [info] [wechat-notifier] [通知] #1032 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1032 msgId=67bb4a8344193e877699f3d7
+[2026-06-22T02:32:38.749Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4b0c3d0b0e36f563489c dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4b0c3d0b0e36f563489c alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:32:38.750Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4b0c3d0b0e36f563489c dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4b0c3d0b0e36f563489c alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:32:41.782Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:32:41.783Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:32:41.786Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1033 msgId=67bb4b0c3d0b0e36f563489c
+[微信发送] 10:32:41 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1033】 店铺：拾玉居和田玉 买家：开心就好 时间：10:32:37 消息：我申请售后，心理会有点疙瘩，有水线还有矿点，接受不了 ┈ 引用本消息回复
+[2026-06-22T02:32:41.786Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1033 msgId=67bb4b0c3d0b0e36f563489c
+[微信发送] 10:32:41 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1033】 店铺：拾玉居和田玉 买家：开心就好 时间：10:32:37 消息：我申请售后，心理会有点疙瘩，有水线还有矿点，接受不了 ┈ 引用本消息回复
+[2026-06-22T02:32:41.788Z] [info] [wechat-notifier] [通知] #1033 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1033 msgId=67bb4b0c3d0b0e36f563489c
+[2026-06-22T02:32:41.789Z] [info] [wechat-notifier] [通知] #1033 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1033 msgId=67bb4b0c3d0b0e36f563489c
+[2026-06-22T02:37:17.083Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4c1c1638c36daa09bbeb dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4c1c1638c36daa09bbeb alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:37:17.083Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4c1c1638c36daa09bbeb dedupKey=拾玉居和田玉::$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb4c1c1638c36daa09bbeb alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:37:20.117Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:37:20.117Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=开心就好 appCid=$3$MSMyIzIjNTg2ODdmZDE1MGM0YjQ3OGY2NThmMmRl.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#58687fd150c4b478f658f2de"]
+[2026-06-22T02:37:20.120Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1034 msgId=67bb4c1c1638c36daa09bbeb
+[微信发送] 10:37:20 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1034】 店铺：拾玉居和田玉 买家：开心就好 时间：10:37:15 消息：？ ┈ 引用本消息回复
+[2026-06-22T02:37:20.121Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1034 msgId=67bb4c1c1638c36daa09bbeb
+[微信发送] 10:37:20 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1034】 店铺：拾玉居和田玉 买家：开心就好 时间：10:37:15 消息：？ ┈ 引用本消息回复
+[2026-06-22T02:37:20.122Z] [info] [wechat-notifier] [通知] #1034 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1034 msgId=67bb4c1c1638c36daa09bbeb
+[2026-06-22T02:37:20.123Z] [info] [wechat-notifier] [通知] #1034 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1034 msgId=67bb4c1c1638c36daa09bbeb
+[2026-06-22T02:54:05.884Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4ff459e94457f6986386 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4ff459e94457f6986386 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:05.884Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4ff459e94457f6986386 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4ff459e94457f6986386 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:06.660Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4ff602e94457f69863b9 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4ff602e94457f69863b9 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:06.661Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4ff602e94457f69863b9 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4ff602e94457f69863b9 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:09.695Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=屎狗吃你请我狼太灰～ appCid=$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5b1406984eacab676148f4c5"]
+[2026-06-22T02:54:09.696Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=屎狗吃你请我狼太灰～ appCid=$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5b1406984eacab676148f4c5"]
+[2026-06-22T02:54:09.698Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1035 msgId=67bb4ff459e94457f6986386
+[诊断] notify-send-start replyId=#1035 msgId=67bb4ff602e94457f69863b9
+[2026-06-22T02:54:09.698Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1035 msgId=67bb4ff459e94457f6986386
+[诊断] notify-send-start replyId=#1035 msgId=67bb4ff602e94457f69863b9
+[2026-06-22T02:54:09.699Z] [info] [wechat-notifier] [微信发送] 10:54:09 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1035】 店铺：和田雅玉 买家：屎狗吃你请我狼太灰～ 时间：10:54:04 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:54:09.699Z] [info] [wechat-notifier] [微信发送] 10:54:09 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1035】 店铺：和田雅玉 买家：屎狗吃你请我狼太灰～ 时间：10:54:04 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T02:54:09.701Z] [info] [wechat-notifier] [通知] #1035 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1035 msgId=67bb4ff459e94457f6986386
+[诊断] notify-send-ok replyId=#1035 msgId=67bb4ff459e94457f6986386
+[兜底] 已补发微信通知 #1035 msgId=67bb4ff602e94457f69863b9
+[诊断] notify-send-ok replyId=#1035 msgId=67bb4ff602e94457f69863b9
+[2026-06-22T02:54:09.701Z] [info] [wechat-notifier] [通知] #1035 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1035 msgId=67bb4ff459e94457f6986386
+[诊断] notify-send-ok replyId=#1035 msgId=67bb4ff459e94457f6986386
+[兜底] 已补发微信通知 #1035 msgId=67bb4ff602e94457f69863b9
+[诊断] notify-send-ok replyId=#1035 msgId=67bb4ff602e94457f69863b9
+[2026-06-22T02:54:09.749Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1035
+[2026-06-22T02:54:09.750Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1035
+[2026-06-22T02:54:09.776Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1035
+[2026-06-22T02:54:09.776Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1035
+[2026-06-22T02:54:10.873Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4ffa3ce2897cfeb95ed7 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4ffa3ce2897cfeb95ed7 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:10.874Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb4ffa3ce2897cfeb95ed7 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb4ffa3ce2897cfeb95ed7 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:13.903Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=屎狗吃你请我狼太灰～ appCid=$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5b1406984eacab676148f4c5"]
+[2026-06-22T02:54:13.903Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=屎狗吃你请我狼太灰～ appCid=$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5b1406984eacab676148f4c5"]
+[2026-06-22T02:54:13.905Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1036 msgId=67bb4ffa3ce2897cfeb95ed7
+[微信发送] 10:54:13 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1036】 店铺：和田雅玉 买家：屎狗吃你请我狼太灰～ 时间：10:54:09 消息：拍了两单 ┈ 引用本消息回复
+[2026-06-22T02:54:13.906Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1036 msgId=67bb4ffa3ce2897cfeb95ed7
+[微信发送] 10:54:13 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1036】 店铺：和田雅玉 买家：屎狗吃你请我狼太灰～ 时间：10:54:09 消息：拍了两单 ┈ 引用本消息回复
+[2026-06-22T02:54:13.907Z] [info] [wechat-notifier] [通知] #1036 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1036 msgId=67bb4ffa3ce2897cfeb95ed7
+[2026-06-22T02:54:13.908Z] [info] [wechat-notifier] [通知] #1036 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1036 msgId=67bb4ffa3ce2897cfeb95ed7
+[2026-06-22T02:54:39.042Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5015a4e3a7bda69ae615 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5015a4e3a7bda69ae615 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:39.042Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5015a4e3a7bda69ae615 dedupKey=和田雅玉::$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5015a4e3a7bda69ae615 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T02:54:42.077Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=屎狗吃你请我狼太灰～ appCid=$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5b1406984eacab676148f4c5"]
+[2026-06-22T02:54:42.078Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=屎狗吃你请我狼太灰～ appCid=$3$MSMyIzIjNWIxNDA2OTg0ZWFjYWI2NzYxNDhmNGM1.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5b1406984eacab676148f4c5"]
+[2026-06-22T02:54:42.080Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1037 msgId=67bb5015a4e3a7bda69ae615
+[微信发送] 10:54:42 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1037】 店铺：和田雅玉 买家：屎狗吃你请我狼太灰～ 时间：10:54:37 消息：好的 ┈ 引用本消息回复
+[2026-06-22T02:54:42.080Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1037 msgId=67bb5015a4e3a7bda69ae615
+[微信发送] 10:54:42 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1037】 店铺：和田雅玉 买家：屎狗吃你请我狼太灰～ 时间：10:54:37 消息：好的 ┈ 引用本消息回复
+[2026-06-22T02:54:42.082Z] [info] [wechat-notifier] [通知] #1037 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1037 msgId=67bb5015a4e3a7bda69ae615
+[2026-06-22T02:54:42.083Z] [info] [wechat-notifier] [通知] #1037 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1037 msgId=67bb5015a4e3a7bda69ae615
+[2026-06-22T03:54:37.347Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5dcef161c44786e45255 dedupKey=和田雅玉::$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5dcef161c44786e45255 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T03:54:37.347Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5dcef161c44786e45255 dedupKey=和田雅玉::$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5dcef161c44786e45255 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T03:54:40.372Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=Serein🌟 appCid=$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5afab0f9e8ac2b61c8e37cdf"]
+[2026-06-22T03:54:40.373Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=Serein🌟 appCid=$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5afab0f9e8ac2b61c8e37cdf"]
+[2026-06-22T03:54:40.375Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1038 msgId=67bb5dcef161c44786e45255
+[微信发送] 11:54:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1038】 店铺：和田雅玉 买家：Serein🌟 时间：11:54:34 消息：【商品卡片】 标题：和田玉手镯晴水手镯白玉手镯拍货链接 价格：¥599 ┈ 引用本消息回复
+[2026-06-22T03:54:40.376Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1038 msgId=67bb5dcef161c44786e45255
+[微信发送] 11:54:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1038】 店铺：和田雅玉 买家：Serein🌟 时间：11:54:34 消息：【商品卡片】 标题：和田玉手镯晴水手镯白玉手镯拍货链接 价格：¥599 ┈ 引用本消息回复
+[2026-06-22T03:54:40.377Z] [info] [wechat-notifier] [通知] #1038 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1038 msgId=67bb5dcef161c44786e45255
+[诊断] notify-send-ok replyId=#1038 msgId=67bb5dcef161c44786e45255
+[2026-06-22T03:54:40.378Z] [info] [wechat-notifier] [通知] #1038 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1038 msgId=67bb5dcef161c44786e45255
+[诊断] notify-send-ok replyId=#1038 msgId=67bb5dcef161c44786e45255
+[2026-06-22T03:54:40.432Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1038
+[2026-06-22T03:54:40.432Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1038
+[2026-06-22T03:54:45.527Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5dd7449564f7a727d8e3 dedupKey=和田雅玉::$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5dd7449564f7a727d8e3 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T03:54:45.527Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5dd7449564f7a727d8e3 dedupKey=和田雅玉::$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5dd7449564f7a727d8e3 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T03:54:48.551Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=Serein🌟 appCid=$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5afab0f9e8ac2b61c8e37cdf"]
+[2026-06-22T03:54:48.552Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=Serein🌟 appCid=$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5afab0f9e8ac2b61c8e37cdf"]
+[2026-06-22T03:54:48.554Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1039 msgId=67bb5dd7449564f7a727d8e3
+[2026-06-22T03:54:48.555Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1039 msgId=67bb5dd7449564f7a727d8e3
+[2026-06-22T03:54:48.555Z] [info] [wechat-notifier] [微信发送] 11:54:48 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1039】 店铺：和田雅玉 买家：Serein🌟 时间：11:54:43 消息：您好，这款是胖圆条嘛？ ┈ 引用本消息回复
+[2026-06-22T03:54:48.556Z] [info] [wechat-notifier] [微信发送] 11:54:48 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1039】 店铺：和田雅玉 买家：Serein🌟 时间：11:54:43 消息：您好，这款是胖圆条嘛？ ┈ 引用本消息回复
+[2026-06-22T03:54:48.556Z] [info] [wechat-notifier] [通知] #1039 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1039 msgId=67bb5dd7449564f7a727d8e3
+[2026-06-22T03:54:48.557Z] [info] [wechat-notifier] [通知] #1039 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1039 msgId=67bb5dd7449564f7a727d8e3
+[2026-06-22T03:55:23.944Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5dfcf453fd5a669a01fa dedupKey=和田雅玉::$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5dfcf453fd5a669a01fa alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T03:55:23.944Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb5dfcf453fd5a669a01fa dedupKey=和田雅玉::$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb5dfcf453fd5a669a01fa alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T03:55:26.971Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=Serein🌟 appCid=$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5afab0f9e8ac2b61c8e37cdf"]
+[2026-06-22T03:55:26.972Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=Serein🌟 appCid=$3$MSMyIzIjNWFmYWIwZjllOGFjMmI2MWM4ZTM3Y2Rm.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5afab0f9e8ac2b61c8e37cdf"]
+[2026-06-22T03:55:26.974Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1040 msgId=67bb5dfcf453fd5a669a01fa
+[微信发送] 11:55:26 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1040】 店铺：和田雅玉 买家：Serein🌟 时间：11:55:22 消息：有实物视频给我发一下 ┈ 引用本消息回复
+[2026-06-22T03:55:26.975Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1040 msgId=67bb5dfcf453fd5a669a01fa
+[微信发送] 11:55:26 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1040】 店铺：和田雅玉 买家：Serein🌟 时间：11:55:22 消息：有实物视频给我发一下 ┈ 引用本消息回复
+[2026-06-22T03:55:26.976Z] [info] [wechat-notifier] [通知] #1040 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1040 msgId=67bb5dfcf453fd5a669a01fa
+[2026-06-22T03:55:26.977Z] [info] [wechat-notifier] [通知] #1040 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1040 msgId=67bb5dfcf453fd5a669a01fa
+[2026-06-22T05:01:30.363Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb6d1f4f34069ac623f214 dedupKey=和田雅玉::$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb6d1f4f34069ac623f214 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:01:30.364Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb6d1f4f34069ac623f214 dedupKey=和田雅玉::$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb6d1f4f34069ac623f214 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:01:33.403Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=荔枝 appCid=$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5bcda90eba903d0001a80918"]
+[2026-06-22T05:01:33.403Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=荔枝 appCid=$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5bcda90eba903d0001a80918"]
+[2026-06-22T05:01:33.406Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1041 msgId=67bb6d1f4f34069ac623f214
+[微信发送] 13:01:33 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1041】 店铺：和田雅玉 买家：荔枝 时间：13:01:29 消息：【商品卡片】 标题：和田玉手镯晴水手镯白玉手镯拍货链接 价格：¥599 ┈ 引用本消息回复
+[2026-06-22T05:01:33.407Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1041 msgId=67bb6d1f4f34069ac623f214
+[微信发送] 13:01:33 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1041】 店铺：和田雅玉 买家：荔枝 时间：13:01:29 消息：【商品卡片】 标题：和田玉手镯晴水手镯白玉手镯拍货链接 价格：¥599 ┈ 引用本消息回复
+[2026-06-22T05:01:33.409Z] [info] [wechat-notifier] [通知] #1041 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1041 msgId=67bb6d1f4f34069ac623f214
+[诊断] notify-send-ok replyId=#1041 msgId=67bb6d1f4f34069ac623f214
+[2026-06-22T05:01:33.410Z] [info] [wechat-notifier] [通知] #1041 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1041 msgId=67bb6d1f4f34069ac623f214
+[诊断] notify-send-ok replyId=#1041 msgId=67bb6d1f4f34069ac623f214
+[2026-06-22T05:01:33.807Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1041
+[2026-06-22T05:01:33.808Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1041
+[2026-06-22T05:01:37.361Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb6d26ccb4069ac623f2d8 dedupKey=和田雅玉::$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb6d26ccb4069ac623f2d8 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:01:37.362Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb6d26ccb4069ac623f2d8 dedupKey=和田雅玉::$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb6d26ccb4069ac623f2d8 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:01:40.387Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=荔枝 appCid=$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5bcda90eba903d0001a80918"]
+[2026-06-22T05:01:40.388Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=荔枝 appCid=$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5bcda90eba903d0001a80918"]
+[2026-06-22T05:01:40.391Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1042 msgId=67bb6d26ccb4069ac623f2d8
+[微信发送] 13:01:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1042】 店铺：和田雅玉 买家：荔枝 时间：13:01:37 消息：有证书吗 ┈ 引用本消息回复
+[2026-06-22T05:01:40.391Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1042 msgId=67bb6d26ccb4069ac623f2d8
+[微信发送] 13:01:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1042】 店铺：和田雅玉 买家：荔枝 时间：13:01:37 消息：有证书吗 ┈ 引用本消息回复
+[2026-06-22T05:01:40.393Z] [info] [wechat-notifier] [通知] #1042 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1042 msgId=67bb6d26ccb4069ac623f2d8
+[2026-06-22T05:01:40.394Z] [info] [wechat-notifier] [通知] #1042 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1042 msgId=67bb6d26ccb4069ac623f2d8
+[2026-06-22T05:02:38.040Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb6d6129a2897cfebc4f1d dedupKey=和田雅玉::$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb6d6129a2897cfebc4f1d alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:02:38.041Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb6d6129a2897cfebc4f1d dedupKey=和田雅玉::$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb6d6129a2897cfebc4f1d alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:02:41.069Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=荔枝 appCid=$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5bcda90eba903d0001a80918"]
+[2026-06-22T05:02:41.070Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=荔枝 appCid=$3$MSMyIzIjNWJjZGE5MGViYTkwM2QwMDAxYTgwOTE4.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#5bcda90eba903d0001a80918"]
+[2026-06-22T05:02:41.073Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1043 msgId=67bb6d6129a2897cfebc4f1d
+[微信发送] 13:02:41 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1043】 店铺：和田雅玉 买家：荔枝 时间：13:02:37 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T05:02:41.073Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1043 msgId=67bb6d6129a2897cfebc4f1d
+[微信发送] 13:02:41 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1043】 店铺：和田雅玉 买家：荔枝 时间：13:02:37 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T05:02:41.075Z] [info] [wechat-notifier] [通知] #1043 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1043 msgId=67bb6d6129a2897cfebc4f1d
+[2026-06-22T05:02:41.076Z] [info] [wechat-notifier] [通知] #1043 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1043 msgId=67bb6d6129a2897cfebc4f1d
+[2026-06-22T05:02:41.174Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1043
+[2026-06-22T05:02:41.174Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1043
+[2026-06-22T05:45:00.570Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb7713d3e64f4e827c46f6 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb7713d3e64f4e827c46f6 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:45:00.571Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb7713d3e64f4e827c46f6 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb7713d3e64f4e827c46f6 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:45:03.597Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=-清冉 appCid=$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59ac87c882ec393e90ca16a3"]
+[2026-06-22T05:45:03.598Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=-清冉 appCid=$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59ac87c882ec393e90ca16a3"]
+[2026-06-22T05:45:03.600Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1044 msgId=67bb7713d3e64f4e827c46f6
+[2026-06-22T05:45:03.601Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1044 msgId=67bb7713d3e64f4e827c46f6
+[2026-06-22T05:45:03.602Z] [info] [wechat-notifier] [微信发送] 13:45:03 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1044】 店铺：拾玉居和田玉 买家：-清冉 时间：13:44:58 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T05:45:03.603Z] [info] [wechat-notifier] [微信发送] 13:45:03 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1044】 店铺：拾玉居和田玉 买家：-清冉 时间：13:44:58 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T05:45:03.603Z] [info] [wechat-notifier] [通知] #1044 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1044 msgId=67bb7713d3e64f4e827c46f6
+[诊断] notify-send-ok replyId=#1044 msgId=67bb7713d3e64f4e827c46f6
+[2026-06-22T05:45:03.604Z] [info] [wechat-notifier] [通知] #1044 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1044 msgId=67bb7713d3e64f4e827c46f6
+[诊断] notify-send-ok replyId=#1044 msgId=67bb7713d3e64f4e827c46f6
+[2026-06-22T05:45:03.635Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1044
+[2026-06-22T05:45:03.635Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1044
+[2026-06-22T05:45:05.643Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb7719eca3a7bda69ec93e dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb7719eca3a7bda69ec93e alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:45:05.644Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb7719eca3a7bda69ec93e dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb7719eca3a7bda69ec93e alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:45:08.677Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=-清冉 appCid=$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59ac87c882ec393e90ca16a3"]
+[2026-06-22T05:45:08.678Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=-清冉 appCid=$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59ac87c882ec393e90ca16a3"]
+[2026-06-22T05:45:08.681Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1045 msgId=67bb7719eca3a7bda69ec93e
+[2026-06-22T05:45:08.682Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1045 msgId=67bb7719eca3a7bda69ec93e
+[2026-06-22T05:45:08.682Z] [info] [wechat-notifier] [微信发送] 13:45:08 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1045】 店铺：拾玉居和田玉 买家：-清冉 时间：13:45:05 消息：收到了吧？ ┈ 引用本消息回复
+[2026-06-22T05:45:08.683Z] [info] [wechat-notifier] [微信发送] 13:45:08 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1045】 店铺：拾玉居和田玉 买家：-清冉 时间：13:45:05 消息：收到了吧？ ┈ 引用本消息回复
+[2026-06-22T05:45:08.684Z] [info] [wechat-notifier] [通知] #1045 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1045 msgId=67bb7719eca3a7bda69ec93e
+[2026-06-22T05:45:08.684Z] [info] [wechat-notifier] [通知] #1045 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1045 msgId=67bb7719eca3a7bda69ec93e
+[2026-06-22T05:57:42.811Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb79fcadafa358f639d02a dedupKey=和田雅玉::$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb79fcadafa358f639d02a alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:57:42.812Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb79fcadafa358f639d02a dedupKey=和田雅玉::$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb79fcadafa358f639d02a alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:57:45.850Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=回回ooo appCid=$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#657ed4340000000020035b36"]
+[2026-06-22T05:57:45.851Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=回回ooo appCid=$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#657ed4340000000020035b36"]
+[2026-06-22T05:57:45.854Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1046 msgId=67bb79fcadafa358f639d02a
+[微信发送] 13:57:45 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1046】 店铺：和田雅玉 买家：回回ooo 时间：13:57:41 消息：[笔记] ┈ 引用本消息回复
+[2026-06-22T05:57:45.854Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1046 msgId=67bb79fcadafa358f639d02a
+[微信发送] 13:57:45 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1046】 店铺：和田雅玉 买家：回回ooo 时间：13:57:41 消息：[笔记] ┈ 引用本消息回复
+[2026-06-22T05:57:45.856Z] [info] [wechat-notifier] [通知] #1046 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1046 msgId=67bb79fcadafa358f639d02a
+[诊断] notify-send-ok replyId=#1046 msgId=67bb79fcadafa358f639d02a
+[2026-06-22T05:57:45.857Z] [info] [wechat-notifier] [通知] #1046 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1046 msgId=67bb79fcadafa358f639d02a
+[诊断] notify-send-ok replyId=#1046 msgId=67bb79fcadafa358f639d02a
+[2026-06-22T05:57:47.495Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb7a01f88b0e36f567fa9c dedupKey=和田雅玉::$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb7a01f88b0e36f567fa9c alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:57:47.496Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb7a01f88b0e36f567fa9c dedupKey=和田雅玉::$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0::id::67bb7a01f88b0e36f567fa9c alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T05:57:50.526Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=回回ooo appCid=$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#657ed4340000000020035b36"]
+[2026-06-22T05:57:50.527Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=和田雅玉 买家=回回ooo appCid=$3$MSMyIzIjNjU3ZWQ0MzQwMDAwMDAwMDIwMDM1YjM2.MSMzIzYjNmExOTVhYzk4MjI4YTYwMDE1MmFhMjA0 receiverAppUids=["1#2#2#657ed4340000000020035b36"]
+[2026-06-22T05:57:50.529Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1047 msgId=67bb7a01f88b0e36f567fa9c
+[微信发送] 13:57:50 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1047】 店铺：和田雅玉 买家：回回ooo 时间：13:57:47 消息：这个还有吗 ┈ 引用本消息回复
+[2026-06-22T05:57:50.530Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1047 msgId=67bb7a01f88b0e36f567fa9c
+[微信发送] 13:57:50 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1047】 店铺：和田雅玉 买家：回回ooo 时间：13:57:47 消息：这个还有吗 ┈ 引用本消息回复
+[2026-06-22T05:57:50.532Z] [info] [wechat-notifier] [通知] #1047 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1047 msgId=67bb7a01f88b0e36f567fa9c
+[2026-06-22T05:57:50.533Z] [info] [wechat-notifier] [通知] #1047 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1047 msgId=67bb7a01f88b0e36f567fa9c
+[2026-06-22T06:28:37.276Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb810f13193e87769f69da dedupKey=XY祥钰珠宝::$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bb810f13193e87769f69da alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T06:28:37.276Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb810f13193e87769f69da dedupKey=XY祥钰珠宝::$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bb810f13193e87769f69da alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T06:28:40.305Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=遗失的美好 appCid=$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#63fb14c50000000029015603"]
+[2026-06-22T06:28:40.305Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=遗失的美好 appCid=$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#63fb14c50000000029015603"]
+[2026-06-22T06:28:40.308Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1048 msgId=67bb810f13193e87769f69da
+[2026-06-22T06:28:40.309Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1048 msgId=67bb810f13193e87769f69da
+[2026-06-22T06:28:40.310Z] [info] [wechat-notifier] [微信发送] 14:28:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1048】 店铺：XY祥钰珠宝 买家：遗失的美好 时间：14:28:35 消息：亲，你们具体地址发一下 ┈ 引用本消息回复
+[2026-06-22T06:28:40.311Z] [info] [wechat-notifier] [微信发送] 14:28:40 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1048】 店铺：XY祥钰珠宝 买家：遗失的美好 时间：14:28:35 消息：亲，你们具体地址发一下 ┈ 引用本消息回复
+[2026-06-22T06:28:40.313Z] [info] [wechat-notifier] [通知] #1048 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1048 msgId=67bb810f13193e87769f69da
+[诊断] notify-send-ok replyId=#1048 msgId=67bb810f13193e87769f69da
+[2026-06-22T06:28:40.313Z] [info] [wechat-notifier] [通知] #1048 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1048 msgId=67bb810f13193e87769f69da
+[诊断] notify-send-ok replyId=#1048 msgId=67bb810f13193e87769f69da
+[2026-06-22T06:29:02.884Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb81292e4f47133a309e83 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bb81292e4f47133a309e83 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T06:29:02.885Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb81292e4f47133a309e83 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bb81292e4f47133a309e83 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T06:29:05.919Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=遗失的美好 appCid=$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#63fb14c50000000029015603"]
+[2026-06-22T06:29:05.920Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=遗失的美好 appCid=$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#63fb14c50000000029015603"]
+[2026-06-22T06:29:05.923Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1049 msgId=67bb81292e4f47133a309e83
+[微信发送] 14:29:05 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1049】 店铺：XY祥钰珠宝 买家：遗失的美好 时间：14:29:02 消息：店面位置 ┈ 引用本消息回复
+[2026-06-22T06:29:05.923Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1049 msgId=67bb81292e4f47133a309e83
+[微信发送] 14:29:05 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1049】 店铺：XY祥钰珠宝 买家：遗失的美好 时间：14:29:02 消息：店面位置 ┈ 引用本消息回复
+[2026-06-22T06:29:05.925Z] [info] [wechat-notifier] [通知] #1049 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1049 msgId=67bb81292e4f47133a309e83
+[2026-06-22T06:29:05.926Z] [info] [wechat-notifier] [通知] #1049 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1049 msgId=67bb81292e4f47133a309e83
+[2026-06-22T06:29:56.226Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb815d27a1c44786e7cdce dedupKey=XY祥钰珠宝::$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bb815d27a1c44786e7cdce alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T06:29:56.227Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb815d27a1c44786e7cdce dedupKey=XY祥钰珠宝::$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bb815d27a1c44786e7cdce alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T06:29:59.261Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=遗失的美好 appCid=$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#63fb14c50000000029015603"]
+[2026-06-22T06:29:59.261Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=遗失的美好 appCid=$3$MSMyIzIjNjNmYjE0YzUwMDAwMDAwMDI5MDE1NjAz.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#63fb14c50000000029015603"]
+[2026-06-22T06:29:59.264Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1050 msgId=67bb815d27a1c44786e7cdce
+[微信发送] 14:29:59 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1050】 店铺：XY祥钰珠宝 买家：遗失的美好 时间：14:29:55 消息：18209225885 ┈ 引用本消息回复
+[2026-06-22T06:29:59.265Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1050 msgId=67bb815d27a1c44786e7cdce
+[微信发送] 14:29:59 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1050】 店铺：XY祥钰珠宝 买家：遗失的美好 时间：14:29:55 消息：18209225885 ┈ 引用本消息回复
+[2026-06-22T06:29:59.267Z] [info] [wechat-notifier] [通知] #1050 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1050 msgId=67bb815d27a1c44786e7cdce
+[2026-06-22T06:29:59.267Z] [info] [wechat-notifier] [通知] #1050 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1050 msgId=67bb815d27a1c44786e7cdce
+[2026-06-22T07:31:09.872Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb8f5ff7f8c36daa108b46 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb8f5ff7f8c36daa108b46 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T07:31:09.873Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bb8f5ff7f8c36daa108b46 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bb8f5ff7f8c36daa108b46 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T07:31:12.912Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=-清冉 appCid=$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59ac87c882ec393e90ca16a3"]
+[2026-06-22T07:31:12.913Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=-清冉 appCid=$3$MSMyIzIjNTlhYzg3Yzg4MmVjMzkzZTkwY2ExNmEz.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59ac87c882ec393e90ca16a3"]
+[2026-06-22T07:31:12.916Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1051 msgId=67bb8f5ff7f8c36daa108b46
+[微信发送] 15:31:12 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1051】 店铺：拾玉居和田玉 买家：-清冉 时间：15:31:08 消息：我说 退回去的货收到了吧？ ┈ 引用本消息回复
+[2026-06-22T07:31:12.917Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1051 msgId=67bb8f5ff7f8c36daa108b46
+[微信发送] 15:31:12 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1051】 店铺：拾玉居和田玉 买家：-清冉 时间：15:31:08 消息：我说 退回去的货收到了吧？ ┈ 引用本消息回复
+[2026-06-22T07:31:12.919Z] [info] [wechat-notifier] [通知] #1051 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1051 msgId=67bb8f5ff7f8c36daa108b46
+[诊断] notify-send-ok replyId=#1051 msgId=67bb8f5ff7f8c36daa108b46
+[2026-06-22T07:31:12.920Z] [info] [wechat-notifier] [通知] #1051 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1051 msgId=67bb8f5ff7f8c36daa108b46
+[诊断] notify-send-ok replyId=#1051 msgId=67bb8f5ff7f8c36daa108b46
+[2026-06-22T11:35:09.864Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbc737385b7a98b6ef2ffa dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bbc737385b7a98b6ef2ffa alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T11:35:09.865Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbc737385b7a98b6ef2ffa dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bbc737385b7a98b6ef2ffa alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T11:35:12.907Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=你莓柿叭 appCid=$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59af85916a6a691916d79ca8"]
+[2026-06-22T11:35:12.908Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=你莓柿叭 appCid=$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59af85916a6a691916d79ca8"]
+[2026-06-22T11:35:12.912Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1052 msgId=67bbc737385b7a98b6ef2ffa
+[2026-06-22T11:35:12.913Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1052 msgId=67bbc737385b7a98b6ef2ffa
+[2026-06-22T11:35:12.914Z] [info] [wechat-notifier] [微信发送] 19:35:12 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1052】 店铺：拾玉居和田玉 买家：你莓柿叭 时间：19:35:06 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T11:35:12.915Z] [info] [wechat-notifier] [微信发送] 19:35:12 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1052】 店铺：拾玉居和田玉 买家：你莓柿叭 时间：19:35:06 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T11:35:12.917Z] [info] [wechat-notifier] [通知] #1052 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1052 msgId=67bbc737385b7a98b6ef2ffa
+[诊断] notify-send-ok replyId=#1052 msgId=67bbc737385b7a98b6ef2ffa
+[2026-06-22T11:35:12.918Z] [info] [wechat-notifier] [通知] #1052 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1052 msgId=67bbc737385b7a98b6ef2ffa
+[诊断] notify-send-ok replyId=#1052 msgId=67bbc737385b7a98b6ef2ffa
+[2026-06-22T11:35:12.957Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1052
+[2026-06-22T11:35:12.958Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1052
+[2026-06-22T11:35:13.206Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbc73c90135982b6a70fee dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bbc73c90135982b6a70fee alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T11:35:13.207Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbc73c90135982b6a70fee dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bbc73c90135982b6a70fee alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T11:35:16.237Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=你莓柿叭 appCid=$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59af85916a6a691916d79ca8"]
+[2026-06-22T11:35:16.238Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=你莓柿叭 appCid=$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59af85916a6a691916d79ca8"]
+[2026-06-22T11:35:16.241Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1053 msgId=67bbc73c90135982b6a70fee
+[微信发送] 19:35:16 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1053】 店铺：拾玉居和田玉 买家：你莓柿叭 时间：19:35:12 消息：看看这几个呢？ ┈ 引用本消息回复
+[2026-06-22T11:35:16.242Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1053 msgId=67bbc73c90135982b6a70fee
+[微信发送] 19:35:16 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1053】 店铺：拾玉居和田玉 买家：你莓柿叭 时间：19:35:12 消息：看看这几个呢？ ┈ 引用本消息回复
+[2026-06-22T11:35:16.243Z] [info] [wechat-notifier] [通知] #1053 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1053 msgId=67bbc73c90135982b6a70fee
+[2026-06-22T11:35:16.244Z] [info] [wechat-notifier] [通知] #1053 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1053 msgId=67bbc73c90135982b6a70fee
+[2026-06-22T11:35:17.507Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbc740e9cf47133a380277 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bbc740e9cf47133a380277 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T11:35:17.509Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbc740e9cf47133a380277 dedupKey=拾玉居和田玉::$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4::id::67bbc740e9cf47133a380277 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T11:35:20.556Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=你莓柿叭 appCid=$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59af85916a6a691916d79ca8"]
+[2026-06-22T11:35:20.558Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=拾玉居和田玉 买家=你莓柿叭 appCid=$3$MSMyIzIjNTlhZjg1OTE2YTZhNjkxOTE2ZDc5Y2E4.MSMzIzYjNmExYTgwODkyMzAwOTEwMDE1ZTg1OGY4 receiverAppUids=["1#2#2#59af85916a6a691916d79ca8"]
+[2026-06-22T11:35:20.563Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1054 msgId=67bbc740e9cf47133a380277
+[2026-06-22T11:35:20.564Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1054 msgId=67bbc740e9cf47133a380277
+[2026-06-22T11:35:20.565Z] [info] [wechat-notifier] [微信发送] 19:35:20 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1054】 店铺：拾玉居和田玉 买家：你莓柿叭 时间：19:35:16 消息：价格多少呀 ┈ 引用本消息回复
+[2026-06-22T11:35:20.567Z] [info] [wechat-notifier] [微信发送] 19:35:20 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1054】 店铺：拾玉居和田玉 买家：你莓柿叭 时间：19:35:16 消息：价格多少呀 ┈ 引用本消息回复
+[2026-06-22T11:35:20.568Z] [info] [wechat-notifier] [通知] #1054 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1054 msgId=67bbc740e9cf47133a380277
+[2026-06-22T11:35:20.569Z] [info] [wechat-notifier] [通知] #1054 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1054 msgId=67bbc740e9cf47133a380277
+[2026-06-22T12:13:35.436Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd0039fd979d10e7d0d52 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd0039fd979d10e7d0d52 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:13:35.437Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd0039fd979d10e7d0d52 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd0039fd979d10e7d0d52 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:13:38.480Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:13:38.481Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:13:38.483Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1055 msgId=67bbd0039fd979d10e7d0d52
+[微信发送] 20:13:38 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1055】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:13:33 消息：【商品卡片】 标题：有水线 荔枝晴白 价格：¥499 ┈ 引用本消息回复
+[2026-06-22T12:13:38.484Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1055 msgId=67bbd0039fd979d10e7d0d52
+[微信发送] 20:13:38 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1055】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:13:33 消息：【商品卡片】 标题：有水线 荔枝晴白 价格：¥499 ┈ 引用本消息回复
+[2026-06-22T12:13:38.485Z] [info] [wechat-notifier] [通知] #1055 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1055 msgId=67bbd0039fd979d10e7d0d52
+[诊断] notify-send-ok replyId=#1055 msgId=67bbd0039fd979d10e7d0d52
+[2026-06-22T12:13:38.486Z] [info] [wechat-notifier] [通知] #1055 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1055 msgId=67bbd0039fd979d10e7d0d52
+[诊断] notify-send-ok replyId=#1055 msgId=67bbd0039fd979d10e7d0d52
+[2026-06-22T12:13:38.841Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1055
+[2026-06-22T12:13:38.842Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1055
+[2026-06-22T12:13:52.688Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd015e7e64f4e828594e3 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd015e7e64f4e828594e3 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:13:52.689Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd015e7e64f4e828594e3 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd015e7e64f4e828594e3 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:13:55.728Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:13:55.729Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:13:55.732Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1056 msgId=67bbd015e7e64f4e828594e3
+[微信发送] 20:13:55 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1056】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:13:52 消息：你好，我申请了退货 ┈ 引用本消息回复
+[2026-06-22T12:13:55.733Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1056 msgId=67bbd015e7e64f4e828594e3
+[微信发送] 20:13:55 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1056】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:13:52 消息：你好，我申请了退货 ┈ 引用本消息回复
+[2026-06-22T12:13:55.734Z] [info] [wechat-notifier] [通知] #1056 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1056 msgId=67bbd015e7e64f4e828594e3
+[2026-06-22T12:13:55.735Z] [info] [wechat-notifier] [通知] #1056 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1056 msgId=67bbd015e7e64f4e828594e3
+[2026-06-22T12:14:08.732Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd02573593e8776a7bab5 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd02573593e8776a7bab5 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:14:08.733Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd02573593e8776a7bab5 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd02573593e8776a7bab5 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:14:11.762Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:14:11.763Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:14:11.767Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1057 msgId=67bbd02573593e8776a7bab5
+[微信发送] 20:14:11 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1057】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:14:07 消息：麻烦处理下 ┈ 引用本消息回复
+[2026-06-22T12:14:11.768Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1057 msgId=67bbd02573593e8776a7bab5
+[微信发送] 20:14:11 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1057】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:14:07 消息：麻烦处理下 ┈ 引用本消息回复
+[2026-06-22T12:14:11.769Z] [info] [wechat-notifier] [通知] #1057 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1057 msgId=67bbd02573593e8776a7bab5
+[2026-06-22T12:14:11.770Z] [info] [wechat-notifier] [通知] #1057 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1057 msgId=67bbd02573593e8776a7bab5
+[2026-06-22T12:14:50.117Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd04dcf63a7bda6a81b18 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd04dcf63a7bda6a81b18 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:14:50.118Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd04dcf63a7bda6a81b18 dedupKey=XY祥钰珠宝::$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh::id::67bbd04dcf63a7bda6a81b18 alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:14:53.152Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:14:53.153Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=XY祥钰珠宝 买家=💎咪豆 appCid=$3$MSMyIzIjNWE0OGY0MTRlOGFjMmI2MjJmNTljMTA5.MSMzIzYjNmEwMThmYTUzMGM5Y2YwMDE1MTIwMjJh receiverAppUids=["1#2#2#5a48f414e8ac2b622f59c109"]
+[2026-06-22T12:14:53.156Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1058 msgId=67bbd04dcf63a7bda6a81b18
+[微信发送] 20:14:53 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1058】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:14:49 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T12:14:53.157Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1058 msgId=67bbd04dcf63a7bda6a81b18
+[微信发送] 20:14:53 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1058】 店铺：XY祥钰珠宝 买家：💎咪豆 时间：20:14:49 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T12:14:53.159Z] [info] [wechat-notifier] [通知] #1058 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1058 msgId=67bbd04dcf63a7bda6a81b18
+[2026-06-22T12:14:53.159Z] [info] [wechat-notifier] [通知] #1058 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[诊断] notify-send-ok replyId=#1058 msgId=67bbd04dcf63a7bda6a81b18
+[2026-06-22T12:14:53.192Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1058
+[2026-06-22T12:14:53.193Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1058
+[2026-06-22T12:42:43.525Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd6aec21564f7a7344c1e dedupKey=祥钰珠宝::$3$MSMyIzIjNWNjY2QxNjIwMDAwMDAwMDE2MDMxNDM5.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2::id::67bbd6aec21564f7a7344c1e alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:42:43.526Z] [info] [wechat-notifier] [诊断] notify-check msgId=67bbd6aec21564f7a7344c1e dedupKey=祥钰珠宝::$3$MSMyIzIjNWNjY2QxNjIwMDAwMDAwMDE2MDMxNDM5.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2::id::67bbd6aec21564f7a7344c1e alreadyNotified=false queueSeen=false pendingExists=false
+[2026-06-22T12:42:46.559Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=祥钰珠宝 买家=哇哈哈哈 appCid=$3$MSMyIzIjNWNjY2QxNjIwMDAwMDAwMDE2MDMxNDM5.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2 receiverAppUids=["1#2#2#5cccd1620000000016031439"]
+[2026-06-22T12:42:46.560Z] [info] [wechat-notifier] [千帆] 已缓存会话发送上下文：店铺=祥钰珠宝 买家=哇哈哈哈 appCid=$3$MSMyIzIjNWNjY2QxNjIwMDAwMDAwMDE2MDMxNDM5.MSMzIzYjNjkxYzU3NjMwODRlZTkwMDE1MTk4MDU2 receiverAppUids=["1#2#2#5cccd1620000000016031439"]
+[2026-06-22T12:42:46.564Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1059 msgId=67bbd6aec21564f7a7344c1e
+[微信发送] 20:42:46 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1059】 店铺：祥钰珠宝 买家：哇哈哈哈 时间：20:42:41 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T12:42:46.565Z] [info] [wechat-notifier] [诊断] notify-send-start replyId=#1059 msgId=67bbd6aec21564f7a7344c1e
+[微信发送] 20:42:46 to=饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12 wxid_jr6nn7q8lezg12 msg=【千帆待回复 #1059】 店铺：祥钰珠宝 买家：哇哈哈哈 时间：20:42:41 消息：【图片消息】 ┈ 引用本消息回复
+[2026-06-22T12:42:46.566Z] [info] [wechat-notifier] [通知] #1059 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1059 msgId=67bbd6aec21564f7a7344c1e
+[诊断] notify-send-ok replyId=#1059 msgId=67bbd6aec21564f7a7344c1e
+[2026-06-22T12:42:46.567Z] [info] [wechat-notifier] [通知] #1059 已发送微信：饭饭 fanfanerhao0824 wxid_jr6nn7q8lezg12
+[兜底] 已补发微信通知 #1059 msgId=67bbd6aec21564f7a7344c1e
+[诊断] notify-send-ok replyId=#1059 msgId=67bbd6aec21564f7a7344c1e
+[2026-06-22T12:42:46.649Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1059
+[2026-06-22T12:42:46.650Z] [info] [wechat-notifier] [微信] 已发送图片给二号：#1059

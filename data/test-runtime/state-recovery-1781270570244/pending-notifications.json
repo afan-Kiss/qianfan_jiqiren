@@ -1,0 +1,14 @@
+[
+  {
+    "replyCount": 0,
+    "replyId": 88001,
+    "shopTitle": "恢复测试店铺",
+    "appCid": "recovery-app-cid",
+    "buyerNick": "恢复买家",
+    "receiverAppUids": [
+      "receiver-recovery-1"
+    ],
+    "createdAt": 1781270570255,
+    "status": "notified"
+  }
+]

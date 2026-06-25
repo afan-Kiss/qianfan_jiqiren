@@ -1,0 +1,21 @@
+{
+  "failure-receipt:test": {
+    "status": "sent",
+    "replyId": 9003,
+    "receiverWxid": "wxid1",
+    "sentAt": 1781358353938
+  },
+  "failure-receipt:test2": {
+    "status": "failed",
+    "replyId": 9003,
+    "receiverWxid": "wxid1",
+    "reason": "fail",
+    "failedAt": 1781358353951
+  },
+  "failure-receipt:1093:9b431d5a9154c395:wxid_jr6nn7q8lezg12:LISTENER_NOT_READY": {
+    "status": "sent",
+    "replyId": 1093,
+    "receiverWxid": "wxid_jr6nn7q8lezg12",
+    "sentAt": 1782296102135
+  }
+}
