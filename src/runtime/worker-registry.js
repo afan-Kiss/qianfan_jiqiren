@@ -16,6 +16,7 @@ const TOPIC_ROUTES = {
   'wechat.reply.received': ['wechat-reply'],
   'qianfan.send.request': ['qianfan-sender'],
   'qianfan.send.execute': ['qianfan-listener'],
+  'qianfan.send.staleEchoCheck': ['qianfan-listener'],
   'task.persist.request': ['persistence'],
   'qianfan.send.result': ['wechat-reply', 'persistence'],
   'wechat.notify.result': ['persistence'],
@@ -30,7 +31,7 @@ const WORKER_TOPIC_SUBSCRIPTIONS = {
   [WORKER_NAMES.WECHAT_CALLBACK]: [],
   [WORKER_NAMES.WECHAT_NOTIFIER]: ['buyer-message.detected'],
   [WORKER_NAMES.WECHAT_REPLY]: ['wechat.reply.received', 'qianfan.send.result'],
-  [WORKER_NAMES.QIANFAN_LISTENER]: ['qianfan.send.execute'],
+  [WORKER_NAMES.QIANFAN_LISTENER]: ['qianfan.send.execute', 'qianfan.send.staleEchoCheck'],
   [WORKER_NAMES.QIANFAN_SENDER]: ['qianfan.send.request'],
 };
 

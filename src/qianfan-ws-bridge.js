@@ -2125,6 +2125,22 @@ function listRegisteredShops() {
   return [...bridges.keys()];
 }
 
+async function verifyStaleSendingEcho(shopTitle, { appCid, text, sentAfterMs }) {
+  if (!shopTitle || !appCid || !text) {
+    return { verified: false, reason: 'missing_context' };
+  }
+  const bridge = findBridgeByShopTitle(shopTitle);
+  if (!bridge || !isBridgeCdpReady(bridge)) {
+    return { verified: false, reason: 'no_bridge' };
+  }
+  return verifyViaHttpMessageList(bridge, {
+    appCid,
+    msgId: null,
+    text,
+    sentAfterMs: Number(sentAfterMs || 0),
+  });
+}
+
 module.exports = {
   registerQianfanWsBridge,
   registerBuyerMessageHandler,
@@ -2147,5 +2163,8 @@ module.exports = {
   noteBuyerAppCidOnBridge,
   listRegisteredShops,
   normalizeShopKey,
+  refreshBridgeNetwork,
+  triggerShopReconnect,
+  verifyStaleSendingEcho,
   HTTP_CAPTURE_PATHS,
 };

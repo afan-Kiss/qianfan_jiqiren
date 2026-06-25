@@ -7,6 +7,7 @@ const { spawn, execSync } = require('child_process');
 const config = require('./wxbot-new-config');
 const { checkWxbotHealth } = require('../wxbot-new-health');
 const { syncWxbotCallbackConfig } = require('../wxbot-new-api');
+const { readJson, writeJson } = require('../shared/safe-json-store');
 
 const STATE_FILE = path.join(config.root, 'data', 'wechat-runtime-state.json');
 const LOCK_FILE = path.join(config.root, 'data', '.wechat-recovery.lock');
@@ -16,6 +17,8 @@ const KILL_TARGETS = ['Weixin.exe', 'WeChat.exe', 'wxbot.exe'];
 const SEND_FAIL_CONSECUTIVE_THRESHOLD = 3;
 const SEND_FAIL_WINDOW_MS = 60000;
 const SEND_FAIL_WINDOW_THRESHOLD = 5;
+const RECOVERY_RETRY_MS = Number(process.env.WECHAT_RECOVERY_RETRY_MS || 60000);
+const STALE_PAUSED_RECOVERY_MS = Number(process.env.WECHAT_STALE_PAUSED_MS || 4 * 60 * 1000);
 
 let inProcessRecoveryPromise = null;
 
@@ -30,37 +33,27 @@ function ensureDataDir() {
 
 function readState() {
   ensureDataDir();
-  if (!fs.existsSync(STATE_FILE)) {
-    return {
-      paused: false,
-      pauseReason: '',
-      wrongLoginBlocked: false,
-      wrongLoginWxid: '',
-      lastRecoveryAt: 0,
-      lastHealthyAt: 0,
-      lastReason: '',
-    };
-  }
-  try {
-    return {
-      paused: false,
-      pauseReason: '',
-      wrongLoginBlocked: false,
-      wrongLoginWxid: '',
-      lastRecoveryAt: 0,
-      lastHealthyAt: 0,
-      lastReason: '',
-      ...JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')),
-    };
-  } catch {
-    return { paused: false, wrongLoginBlocked: false };
-  }
+  const defaults = {
+    paused: false,
+    pauseReason: '',
+    wrongLoginBlocked: false,
+    wrongLoginWxid: '',
+    lastRecoveryAt: 0,
+    lastHealthyAt: 0,
+    lastReason: '',
+    recoveryInProgress: false,
+    nextRecoveryAt: 0,
+    pausedAt: 0,
+  };
+  if (!fs.existsSync(STATE_FILE)) return { ...defaults };
+  const parsed = readJson(STATE_FILE, defaults, { critical: true });
+  return { ...defaults, ...parsed };
 }
 
 function writeState(patch = {}) {
   ensureDataDir();
   const next = { ...readState(), ...patch, updatedAt: Date.now() };
-  fs.writeFileSync(STATE_FILE, JSON.stringify(next, null, 2));
+  writeJson(STATE_FILE, next);
   return next;
 }
 
@@ -326,8 +319,12 @@ async function recoverWechatRuntime(reason = 'recover', options = {}) {
       if (!isHealthyReport(report)) {
         writeState({
           recoveryInProgress: false,
+          paused: true,
+          pauseReason: reason || 'recover_failed',
+          pausedAt: Date.now(),
           lastFailureAt: Date.now(),
           lastFailureReason: report.reason || report.brief || '微信注入未就绪',
+          nextRecoveryAt: Date.now() + RECOVERY_RETRY_MS,
         });
         return {
           ok: false,
@@ -346,6 +343,8 @@ async function recoverWechatRuntime(reason = 'recover', options = {}) {
         wrongLoginWxid: '',
         wrongLoginReason: '',
         lastHealthyAt: Date.now(),
+        nextRecoveryAt: 0,
+        pauseReason: '',
         lastReport: {
           wxid: report.wxid,
           nickname: report.nickname,
@@ -367,8 +366,12 @@ async function recoverWechatRuntime(reason = 'recover', options = {}) {
     } catch (err) {
       writeState({
         recoveryInProgress: false,
+        paused: true,
+        pauseReason: String(reason || 'recover_failed'),
+        pausedAt: Date.now(),
         lastFailureAt: Date.now(),
         lastFailureReason: err.message || String(err),
+        nextRecoveryAt: Date.now() + RECOVERY_RETRY_MS,
       });
       return {
         ok: false,
@@ -500,6 +503,26 @@ function enrichWechatSendError(err, meta = {}) {
   return base;
 }
 
+function shouldRetryStalePausedRecovery(state = readState(), now = Date.now()) {
+  if (state.wrongLoginBlocked) return false;
+  if (!state.paused || state.recoveryInProgress) return false;
+  const pausedAt = Number(state.pausedAt || state.lastRecoveryAt || 0);
+  const nextAt = Number(state.nextRecoveryAt || 0);
+  if (nextAt > 0 && now >= nextAt) return true;
+  if (pausedAt > 0 && now - pausedAt >= STALE_PAUSED_RECOVERY_MS) return true;
+  return false;
+}
+
+function scheduleRecoveryRetry(reason = 'recover_failed') {
+  return writeState({
+    paused: true,
+    pauseReason: String(reason || 'recover_failed'),
+    pausedAt: Date.now(),
+    recoveryInProgress: false,
+    nextRecoveryAt: Date.now() + RECOVERY_RETRY_MS,
+  });
+}
+
 module.exports = {
   recoverWechatRuntime,
   evaluateWxbotHealth,
@@ -520,7 +543,11 @@ module.exports = {
   recordWechatSendFault,
   clearSendFailureCounters,
   enrichWechatSendError,
+  shouldRetryStalePausedRecovery,
+  scheduleRecoveryRetry,
   SEND_FAIL_CONSECUTIVE_THRESHOLD,
   SEND_FAIL_WINDOW_MS,
   SEND_FAIL_WINDOW_THRESHOLD,
+  RECOVERY_RETRY_MS,
+  STALE_PAUSED_RECOVERY_MS,
 };

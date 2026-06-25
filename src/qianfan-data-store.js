@@ -29,42 +29,16 @@ function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+const { readJson: readJsonSafe, writeJson: writeJsonSafe } = require('./shared/safe-json-store');
+
 function readJson(file, fallback) {
   ensureDataDir();
-  if (!fs.existsSync(file)) return fallback;
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return fallback;
-  }
+  return readJsonSafe(file, fallback);
 }
 
 function writeJson(file, data) {
   ensureDataDir();
-  const payload = `${JSON.stringify(data, null, 2)}\n`;
-  const dir = path.dirname(file);
-  let lastErr = null;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Date.now()}.${attempt}.tmp`);
-    try {
-      fs.writeFileSync(tmp, payload, 'utf8');
-      if (process.platform === 'win32') {
-        fs.copyFileSync(tmp, file);
-        fs.unlinkSync(tmp);
-      } else {
-        fs.renameSync(tmp, file);
-      }
-      return;
-    } catch (err) {
-      lastErr = err;
-      try {
-        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
-      } catch {
-        // ignore tmp cleanup errors
-      }
-    }
-  }
-  throw lastErr || new Error(`writeJson failed: ${file}`);
+  writeJsonSafe(file, data);
 }
 
 function trimSetTail(set, max) {

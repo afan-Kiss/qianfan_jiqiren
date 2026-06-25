@@ -267,7 +267,7 @@ function createWorkerRuntime(options = {}) {
   }
 
   function dispatchBusMessage(message) {
-    if (message.topic === 'task.persist.result' && resolvePendingRequest(message)) {
+    if (message.meta?.requestId && resolvePendingRequest(message)) {
       return;
     }
 

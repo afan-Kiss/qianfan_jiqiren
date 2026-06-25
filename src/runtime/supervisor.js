@@ -800,7 +800,8 @@ class RuntimeSupervisor extends EventEmitter {
 
   forwardBusMessage(message) {
     const replyTo = message.meta?.replyTo;
-    if (message.topic === 'task.persist.result' && replyTo) {
+    const requestId = message.meta?.requestId;
+    if (replyTo && requestId && String(message.topic || '').endsWith('.result')) {
       const replyRunner = this.runners.get(replyTo);
       if (replyRunner) {
         const sent = replyRunner.send({
@@ -820,7 +821,7 @@ class RuntimeSupervisor extends EventEmitter {
 
     const targets = this.messageBus.getTargetsForTopic(message.topic);
     for (const workerName of targets) {
-      if (message.topic === 'task.persist.result' && replyTo && workerName === replyTo) {
+      if (replyTo && requestId && workerName === replyTo) {
         continue;
       }
       const runner = this.runners.get(workerName);

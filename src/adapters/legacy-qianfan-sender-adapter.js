@@ -1,6 +1,7 @@
 const config = require('../wechat/wxbot-new-config');
 const { sendWxText } = require('../wechat-send-api');
 const { findBridgeByShopTitle, sendQianfanTextReply, resolveReplyContextForSend, isBridgeCdpReady, waitForBridgeCdpReady } = require('../qianfan-ws-bridge');
+const { isShopQianfanDegraded, getShopDegradedReason } = require('../qianfan-bridge-health-pump');
 const { isBuyerListenerActive } = require('./legacy-qianfan-listener-adapter');
 const { buyerNickMatches } = require('../qianfan-data-store');
 const { withTimeout } = require('../cdp-timeout');
@@ -106,6 +107,14 @@ async function sendQianfanReplyRequest(request = {}) {
         await sendFailureReceipt({ replyId, pending, reason, text: replyText, fromWxid });
       }
       return fail(new Error(reason), 'SHOP_NOT_ATTACHED');
+    }
+
+    if (isShopQianfanDegraded(pending.shopTitle)) {
+      const degraded = getShopDegradedReason(pending.shopTitle);
+      const reason = degraded?.reason
+        ? `千帆连接降级（${degraded.reason}），消息已加入重试队列`
+        : '千帆连接降级，消息已加入重试队列';
+      return fail(new Error(reason), 'QIANFAN_DEGRADED');
     }
 
     let bridge = findBridgeByShopTitle(pending.shopTitle);

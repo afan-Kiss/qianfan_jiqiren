@@ -7,6 +7,8 @@ const {
 
 const runtime = createWorkerRuntime({ workerName: 'qianfan-sender' });
 const RETRY_PUMP_MS = Number(process.env.QIANFAN_SEND_RETRY_PUMP_MS || 5000);
+const QIANFAN_SEND_SENDING_STALE_MS = 2 * 60 * 1000;
+const STALE_ECHO_CHECK_TIMEOUT_MS = Number(process.env.QIANFAN_STALE_ECHO_CHECK_MS || 15000);
 
 let retryPumpRunning = false;
 let retryPumpTimer = null;
@@ -129,8 +131,58 @@ async function syncPendingFromSentConflict(conflict, traceId) {
   );
 }
 
+async function tryResolveStaleSendingEcho(entry, pendingKey, traceId) {
+  if (entry.status !== 'sending') return false;
+  const sendingAt = Number(entry.sendingAt || 0);
+  if (!sendingAt || Date.now() - sendingAt < QIANFAN_SEND_SENDING_STALE_MS) return false;
+
+  const appCid = String(entry.pending?.appCid || '').trim();
+  const shopTitle = String(entry.pending?.shopTitle || '').trim();
+  const replyText = String(entry.replyText || '').trim();
+  if (!appCid || !shopTitle || !replyText) return false;
+
+  const echoResult = await runtime.request(
+    'qianfan.send.staleEchoCheck',
+    {
+      shopTitle,
+      appCid,
+      replyText,
+      sendingAt,
+      replyId: entry.replyId,
+      pendingKey,
+      traceId,
+    },
+    { traceId, timeoutMs: STALE_ECHO_CHECK_TIMEOUT_MS },
+  );
+  if (!echoResult.ok || !echoResult.data?.verified) return false;
+
+  const qianfanMsgId = String(echoResult.data?.qianfanMsgId || '').trim();
+  if (!qianfanMsgId) return false;
+
+  await persistSend(
+    'qianfanSend.recordSuccess',
+    {
+      idempotencyKey: pendingKey,
+      replyId: entry.replyId,
+      qianfanMsgId,
+      echoVerified: true,
+    },
+    { idempotencyKey: `echo-success:${pendingKey}`, traceId },
+  );
+  runtime.log(
+    'info',
+    `stale sending echo matched replyId=${entry.replyId} msgId=${qianfanMsgId}, skip resend`,
+    { traceId, topic: 'qianfan.send.retry' },
+  );
+  return true;
+}
+
 async function retryDueSend(entry, traceId) {
   const pendingKey = entry.pendingKey;
+  if (await tryResolveStaleSendingEcho(entry, pendingKey, traceId)) {
+    return;
+  }
+
   const conflictResult = await persistSend(
     'qianfanSend.checkConflict',
     { replyId: entry.replyId, pendingKey },

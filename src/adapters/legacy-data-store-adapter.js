@@ -4,6 +4,7 @@ const dataStore = require('../qianfan-data-store');
 const { ok, fail } = require('./adapter-result');
 const { wechatReplyContentKey } = require('../runtime/idempotency-keys');
 const { resolveDataDir, resolveLogsDir } = require('../shared/app-root');
+const { readJson, writeJson } = require('../shared/safe-json-store');
 
 const DATA_DIR = resolveDataDir();
 const IDEMPOTENCY_FILE = path.join(DATA_DIR, 'persist-idempotency.json');
@@ -53,50 +54,22 @@ function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-function readJson(file, fallback) {
+function loadJsonFile(file, fallback) {
   ensureDataDir();
-  if (!fs.existsSync(file)) return fallback;
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return fallback;
-  }
+  return readJson(file, fallback);
 }
 
-function writeJson(file, data) {
+function saveJsonFile(file, data) {
   ensureDataDir();
-  const payload = `${JSON.stringify(data, null, 2)}\n`;
-  const dir = path.dirname(file);
-  let lastErr = null;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Date.now()}.${attempt}.tmp`);
-    try {
-      fs.writeFileSync(tmp, payload, 'utf8');
-      if (process.platform === 'win32') {
-        fs.copyFileSync(tmp, file);
-        fs.unlinkSync(tmp);
-      } else {
-        fs.renameSync(tmp, file);
-      }
-      return;
-    } catch (err) {
-      lastErr = err;
-      try {
-        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
-      } catch {
-        // ignore tmp cleanup errors
-      }
-    }
-  }
-  throw lastErr || new Error(`writeJson failed: ${file}`);
+  writeJson(file, data);
 }
 
 function loadBuyerNotifyClaimMap() {
-  return readJson(BUYER_NOTIFY_CLAIM_FILE, {});
+  return loadJsonFile(BUYER_NOTIFY_CLAIM_FILE, {});
 }
 
 function saveBuyerNotifyClaimMap(map) {
-  writeJson(BUYER_NOTIFY_CLAIM_FILE, trimObjectKeys(map, 20000));
+  saveJsonFile(BUYER_NOTIFY_CLAIM_FILE, trimObjectKeys(map, 20000));
 }
 
 function claimBuyerMessageNotify(message) {
@@ -162,14 +135,14 @@ function trimObjectKeys(obj, max) {
 }
 
 function getIdempotencyStore() {
-  return readJson(IDEMPOTENCY_FILE, {});
+  return loadJsonFile(IDEMPOTENCY_FILE, {});
 }
 
 function saveIdempotencyResult(idempotencyKey, data) {
   if (!idempotencyKey) return;
   const store = trimObjectKeys(getIdempotencyStore(), MAX_IDEMPOTENCY);
   store[idempotencyKey] = { data, at: Date.now() };
-  writeJson(IDEMPOTENCY_FILE, store);
+  saveJsonFile(IDEMPOTENCY_FILE, store);
 }
 
 function getCachedIdempotency(idempotencyKey) {
@@ -194,19 +167,19 @@ function checkWechatReplyDuplicate({ wechatReplyMsgId, replyId, fromWxid, text }
 }
 
 function loadFailureReceiptMap() {
-  return readJson(FAILURE_RECEIPT_FILE, {});
+  return loadJsonFile(FAILURE_RECEIPT_FILE, {});
 }
 
 function saveFailureReceiptMap(map) {
-  writeJson(FAILURE_RECEIPT_FILE, trimObjectKeys(map, 10000));
+  saveJsonFile(FAILURE_RECEIPT_FILE, trimObjectKeys(map, 10000));
 }
 
 function loadQianfanSendPendingMap() {
-  return readJson(QIANFAN_SEND_PENDING_FILE, {});
+  return loadJsonFile(QIANFAN_SEND_PENDING_FILE, {});
 }
 
 function saveQianfanSendPendingMap(map) {
-  writeJson(QIANFAN_SEND_PENDING_FILE, trimObjectKeys(map, 5000));
+  saveJsonFile(QIANFAN_SEND_PENDING_FILE, trimObjectKeys(map, 5000));
 }
 
 function normalizeSendAttempts(entry = {}) {
@@ -243,11 +216,11 @@ function isQianfanSendDue(entry, now = Date.now()) {
 }
 
 function loadWechatReplyDedupMap() {
-  return readJson(WECHAT_REPLY_DEDUP_FILE, {});
+  return loadJsonFile(WECHAT_REPLY_DEDUP_FILE, {});
 }
 
 function saveWechatReplyDedupMap(map) {
-  writeJson(WECHAT_REPLY_DEDUP_FILE, trimObjectKeys(map, 10000));
+  saveJsonFile(WECHAT_REPLY_DEDUP_FILE, trimObjectKeys(map, 10000));
 }
 
 const SERIALIZED_ACTIONS = new Set([
@@ -765,10 +738,10 @@ async function executeAction(action, data = {}) {
         error: data.error,
         createdAt: data.createdAt || Date.now(),
       };
-      const list = readJson(DEAD_LETTER_FILE, []);
+      const list = loadJsonFile(DEAD_LETTER_FILE, []);
       list.push(entry);
       const trimmed = list.length > MAX_DEAD_LETTERS ? list.slice(list.length - MAX_DEAD_LETTERS) : list;
-      writeJson(DEAD_LETTER_FILE, trimmed);
+      saveJsonFile(DEAD_LETTER_FILE, trimmed);
       appendDeadLetterLog(entry);
       return ok({ saved: true, id: trimmed.length });
     }

@@ -6,7 +6,12 @@ const {
   stopCallbackServer,
   evaluateWxbotHealth,
 } = require('../adapters/legacy-wechat-callback-adapter');
-const { blockWrongLoginRecovery } = require('../wechat/wechat-runtime-recovery');
+const {
+  blockWrongLoginRecovery,
+  readWechatRuntimeState,
+  resumeWechatRuntime,
+  shouldRetryStalePausedRecovery,
+} = require('../wechat/wechat-runtime-recovery');
 
 const runtime = createWorkerRuntime({ workerName: 'wechat-callback' });
 const RETRY_MS = Number(process.env.WECHAT_CALLBACK_RETRY_MS || 15000);
@@ -120,7 +125,7 @@ async function runRecovery(reason, options = {}) {
         lastError: detail,
         wxbotHealthy: false,
       });
-      scheduleRetry();
+      scheduleRetry(RETRY_MS);
       return recovered;
     }
 
@@ -223,6 +228,18 @@ async function boot() {
 
 async function probeWxbotHealth() {
   if (process.env.QIANFAN_SIM_MODE === '1' || recoveryInProgress || !bootCompleted) return;
+
+  const runtimeState = readWechatRuntimeState();
+  if (runtimeState.wrongLoginBlocked) {
+    reportStatus({
+      phase: 'failed',
+      businessReady: false,
+      lastError: runtimeState.wrongLoginReason || '微信登录 wxid 不匹配',
+      wxbotHealthy: false,
+    });
+    return;
+  }
+
   const evaluation = await evaluateWxbotHealth();
   if (evaluation.wrongLogin) {
     const detail = blockWrongLoginRecovery(evaluation.report, 'health_probe');
@@ -239,19 +256,34 @@ async function probeWxbotHealth() {
     stopHealthProbe();
     return;
   }
-  if (!evaluation.healthy) {
-    runtime.log('warn', `wxbot unhealthy: ${evaluation.reason || 'unknown'}`);
-    await runRecovery(evaluation.reason || 'health_probe_failed');
+
+  if (evaluation.healthy) {
+    if (runtimeState.paused && !runtimeState.recoveryInProgress) {
+      resumeWechatRuntime({
+        lastHealthyAt: Date.now(),
+        lastReason: 'health_probe_auto_resume',
+      });
+      runtime.log('info', 'wxbot healthy but paused=true, auto resumed');
+    }
+    reportStatus({
+      phase: 'running',
+      businessReady: true,
+      lastError: '',
+      wxbotHealthy: true,
+      wxbotClientId: evaluation.report?.clientId,
+      wxbotWxid: evaluation.report?.wxid,
+    });
     return;
   }
-  reportStatus({
-    phase: 'running',
-    businessReady: true,
-    lastError: '',
-    wxbotHealthy: true,
-    wxbotClientId: evaluation.report?.clientId,
-    wxbotWxid: evaluation.report?.wxid,
-  });
+
+  if (shouldRetryStalePausedRecovery(runtimeState) && !recoveryInProgress) {
+    runtime.log('warn', `wxbot stale paused recovery reason=${runtimeState.pauseReason || 'stale_paused'}`);
+    await runRecovery(runtimeState.lastReason || 'stale_paused_recovery');
+    return;
+  }
+
+  runtime.log('warn', `wxbot unhealthy: ${evaluation.reason || 'unknown'}`);
+  await runRecovery(evaluation.reason || 'health_probe_failed');
 }
 
 function stopHealthProbe() {

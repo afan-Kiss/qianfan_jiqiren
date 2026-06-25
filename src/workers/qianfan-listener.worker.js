@@ -5,39 +5,115 @@ const {
   stopBuyerListener,
 } = require('../adapters/legacy-qianfan-listener-adapter');
 const { createQianfanRuntimeController } = require('../adapters/qianfan-runtime-controller');
+const { createQianfanBridgeHealthPump } = require('../qianfan-bridge-health-pump');
+const { verifyStaleSendingEcho } = require('../qianfan-ws-bridge');
 const { buyerMessageKeyFromMessage } = require('../runtime/idempotency-keys');
 const config = require('../wechat/wxbot-new-config');
 
 const runtime = createWorkerRuntime({ workerName: 'qianfan-listener' });
+const bridgeHealthPump = createQianfanBridgeHealthPump({
+  log: (level, message) => runtime.log(level, message),
+});
+
+function publishSendResult(payload, meta, traceId) {
+  runtime.publish('qianfan.send.result', payload, { ...meta, traceId });
+}
 
 runtime.onTopic('qianfan.send.execute', async (payload, meta) => {
   const traceId = meta.traceId || payload.traceId || runtime.newTraceId();
-  const result = await sendQianfanReplyRequest(payload);
-  const qianfanMsgId = String(result.data?.qianfanMsgId || '').trim();
-  const success = Boolean(result.ok && result.data?.success && qianfanMsgId);
+  try {
+    const result = await sendQianfanReplyRequest(payload);
+    const qianfanMsgId = String(result.data?.qianfanMsgId || '').trim();
+    const success = Boolean(result.ok && result.data?.success && qianfanMsgId);
 
-  runtime.publish(
-    'qianfan.send.result',
-    {
-      success,
-      replyId: payload.replyId,
-      fromWxid: payload.fromWxid,
+    publishSendResult(
+      {
+        success,
+        replyId: payload.replyId,
+        fromWxid: payload.fromWxid,
+        traceId,
+        request: payload,
+        result,
+        retry: payload.retry === true,
+        qianfanMsgId: qianfanMsgId || undefined,
+        error: success
+          ? undefined
+          : {
+              message: formatQianfanSendErrorMessage(
+                result.error?.message || result.data?.reason || '千帆发送失败',
+              ),
+              code: result.error?.code || 'QIANFAN_SEND_FAILED',
+            },
+      },
+      meta,
       traceId,
-      request: payload,
-      result,
-      retry: payload.retry === true,
-      qianfanMsgId: qianfanMsgId || undefined,
-      error: success
-        ? undefined
-        : {
-            message: formatQianfanSendErrorMessage(
-              result.error?.message || result.data?.reason || '千帆发送失败',
-            ),
-            code: result.error?.code || 'QIANFAN_SEND_FAILED',
-          },
-    },
-    { ...meta, traceId },
-  );
+    );
+  } catch (err) {
+    runtime.log('error', `qianfan.send.execute failed replyId=${payload.replyId || ''}: ${err.message || err}`, {
+      traceId,
+      topic: 'qianfan.send.execute',
+    });
+    publishSendResult(
+      {
+        success: false,
+        replyId: payload.replyId,
+        fromWxid: payload.fromWxid,
+        traceId,
+        request: payload,
+        retry: payload.retry === true,
+        error: {
+          message: formatQianfanSendErrorMessage(err.message || String(err)),
+          code: err.code || 'QIANFAN_SEND_EXECUTE_FAILED',
+        },
+      },
+      meta,
+      traceId,
+    );
+  }
+});
+
+runtime.onTopic('qianfan.send.staleEchoCheck', async (payload, meta) => {
+  const traceId = meta.traceId || payload.traceId || runtime.newTraceId();
+  try {
+    const echo = await verifyStaleSendingEcho(payload.shopTitle, {
+      appCid: payload.appCid,
+      text: payload.replyText,
+      sentAfterMs: payload.sendingAt,
+    });
+    runtime.publish(
+      'qianfan.send.staleEchoCheck.result',
+      {
+        ok: true,
+        data: {
+          verified: echo.verified === true,
+          qianfanMsgId: echo.msgId ? String(echo.msgId) : '',
+          reason: echo.reason || '',
+        },
+        traceId,
+      },
+      {
+        ...meta,
+        traceId,
+        replyTo: meta.replyTo || payload.sourceWorker,
+        requestId: meta.requestId,
+      },
+    );
+  } catch (err) {
+    runtime.publish(
+      'qianfan.send.staleEchoCheck.result',
+      {
+        ok: false,
+        error: { message: err.message || String(err), code: err.code || 'STALE_ECHO_CHECK_FAILED' },
+        traceId,
+      },
+      {
+        ...meta,
+        traceId,
+        replyTo: meta.replyTo || payload.sourceWorker,
+        requestId: meta.requestId,
+      },
+    );
+  }
 });
 
 const RETRY_MS = Number(process.env.QIANFAN_LISTENER_RETRY_MS || 30000);
@@ -60,6 +136,7 @@ function ensureListenerCleanupRegistered() {
       clearTimeout(retryTimer);
       retryTimer = null;
     }
+    bridgeHealthPump.stop();
     await stopBuyerListener();
   });
 }
@@ -268,6 +345,7 @@ async function tryStartListener() {
     shopReport: readyResult.attachResult?.shopReport || null,
     lastError: '',
   });
+  bridgeHealthPump.start();
 }
 
 async function boot() {
