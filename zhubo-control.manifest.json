@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 1,
+  "name": "千帆中转机器人",
+  "code": "qianfan-relay",
+  "category": "千帆",
+  "gitRemote": "https://github.com/afan-Kiss/qianfan_jiqiren.git",
+  "localPath": "E:\\我的软件源码\\千帆中转机器人",
+  "desktopStartCommand": "npm start",
+  "desktopStopMode": "process-tree",
+  "healthType": "process",
+  "ports": [
+    8787,
+    9322
+  ],
+  "control": {
+    "enabled": true,
+    "showInDesktop": true,
+    "cookieMode": "none",
+    "favorite": true,
+    "notes": "负责上传四店 Cookie 到总控；无 HTTP health"
+  },
+  "riskLevel": "high"
+}
