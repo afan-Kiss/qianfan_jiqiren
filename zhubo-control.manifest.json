@@ -1,0 +1,19 @@
+{
+  "manifestVersion": 1,
+  "name": "抖店机器人",
+  "code": "doudian-bot",
+  "category": "抖店",
+  "gitRemote": "https://github.com/afan-Kiss/qianfan_jiqiren.git",
+  "localPath": "E:\\我的软件源码\\抖店机器人",
+  "desktopStartCommand": "npm start",
+  "healthType": "process",
+  "ports": [
+    19527,
+    9333
+  ],
+  "control": {
+    "enabled": true,
+    "showInDesktop": true,
+    "cookieMode": "none"
+  }
+}
