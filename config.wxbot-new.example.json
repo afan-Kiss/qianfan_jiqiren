@@ -18,5 +18,13 @@
     "wsWakeBuyerNick": "饭饭",
     "wsWakeText": "亲亲",
     "sendOnlyBuyerNick": ""
+  },
+  "controlCenter": {
+    "enabled": true,
+    "serverUrl": "http://8.137.126.18/control",
+    "serviceToken": "",
+    "collectorMachine": "培育钻石",
+    "collectorProject": "千帆中转机器人",
+    "uploadIntervalMinutes": 10
   }
 }

@@ -284,6 +284,16 @@ const qianfanDebug = {
   root: ROOT,
 };
 
+const controlCenterFile = fileCfg.controlCenter || {};
+const controlCenter = {
+  enabled: controlCenterFile.enabled !== false,
+  serverUrl: String(process.env.CONTROL_SERVER_URL || controlCenterFile.serverUrl || 'http://8.137.126.18/control').replace(/\/$/, ''),
+  serviceToken: String(process.env.CONTROL_SERVICE_TOKEN || controlCenterFile.serviceToken || '').trim(),
+  collectorMachine: String(process.env.CONTROL_COLLECTOR_MACHINE || controlCenterFile.collectorMachine || '培育钻石').trim(),
+  collectorProject: String(controlCenterFile.collectorProject || '千帆中转机器人').trim(),
+  uploadIntervalMinutes: pickNum('controlCenterUploadIntervalMinutes', controlCenterFile.uploadIntervalMinutes || 10),
+};
+
 const loginBotWxid =
   process.env.WXBOT_LOGIN_BOT_WXID || pick('loginBotWxid', knownAccounts.robot.wxid);
 
@@ -323,6 +333,7 @@ const config = {
   notifyAccounts,
   qianfanDevtoolsPort: qianfanDebug.devtoolsPort,
   qianfanDebug,
+  controlCenter,
   username: pick('username', wx.username || ''),
   password: pick('password', wx.password || ''),
   wxbotRuntimeDir: resolveWxbotRuntimeDir(ROOT),

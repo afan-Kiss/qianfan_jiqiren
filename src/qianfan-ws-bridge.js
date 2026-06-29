@@ -1622,7 +1622,16 @@ async function registerQianfanWsBridge(pageInfo, client) {
 
   const { Network } = client;
   Network.webSocketCreated(({ requestId, url }) => {
-    bridge.wsUrls.set(requestId, String(url || ''));
+    const wsUrl = String(url || '');
+    bridge.wsUrls.set(requestId, wsUrl);
+    if (wsUrl.includes('impaas') || wsUrl.includes('longlink') || wsUrl.includes('walle')) {
+      try {
+        const { onWsConnected } = require('./qianfan-cookie-collector');
+        onWsConnected(shopTitle);
+      } catch {
+        // ignore
+      }
+    }
     bridge.wsSessions.set(requestId, {
       requestId,
       url: String(url || ''),
@@ -1639,6 +1648,30 @@ async function registerQianfanWsBridge(pageInfo, client) {
 
   Network.requestWillBeSent(({ request }) => {
     captureHttpTemplate(bridge, request);
+    const cookieHeader = request?.headers?.Cookie || request?.headers?.cookie || '';
+    if (cookieHeader) {
+      try {
+        const { noteBridgeRequestCookie, triggerCookieCheck } = require('./qianfan-cookie-collector');
+        noteBridgeRequestCookie(bridge, cookieHeader);
+        if (String(request?.url || '').includes('xiaohongshu.com')) {
+          void triggerCookieCheck(shopTitle, 'request_cookie');
+        }
+      } catch {
+        // ignore cookie collector errors
+      }
+    }
+  });
+
+  Network.responseReceived(({ response }) => {
+    const status = Number(response?.status || 0);
+    if (status === 401 || status === 403) {
+      try {
+        const { onAuthError } = require('./qianfan-cookie-collector');
+        onAuthError(shopTitle);
+      } catch {
+        // ignore
+      }
+    }
   });
 
   Network.webSocketFrameReceived((params) => {
@@ -1655,6 +1688,12 @@ async function registerQianfanWsBridge(pageInfo, client) {
 
   bridges.set(shopTitle, bridge);
   bridges.set(normalizeShopKey(shopTitle), bridge);
+  try {
+    const { onBridgeRegistered } = require('./qianfan-cookie-collector');
+    onBridgeRegistered(bridge);
+  } catch {
+    // ignore
+  }
   return bridge;
 }
 

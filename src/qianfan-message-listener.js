@@ -45,6 +45,7 @@ const {
   unregisterShopReconnectWake,
   prewarmShopWsSend,
 } = require('./qianfan-ws-bridge');
+const { onBuyerMessage: triggerCookieOnBuyerMessage, scheduleCookieRefresh, onShopSwitch } = require('./qianfan-cookie-collector');
 const { println } = require('./utils');
 const {
   withTimeout,
@@ -190,6 +191,7 @@ function emitBuyerMessage(message, handlers, reasonRef, options = {}) {
       );
     }
     handlers.onBuyerMessage(message, { source, httpFallback: options.httpFallback === true });
+    triggerCookieOnBuyerMessage(message);
     lastHeartbeatAt = Date.now();
     lastBuyerMessageAt = Date.now();
   }
@@ -316,6 +318,10 @@ async function attachPage(pageInfo, handlers, state) {
     }
 
     const shopTitle = pageInfo.shopTitle || pageInfo.pageTitle || '';
+    if (state?.lastAttachedShopTitle && state.lastAttachedShopTitle !== shopTitle) {
+      onShopSwitch(shopTitle);
+    }
+    state.lastAttachedShopTitle = shopTitle;
     await registerQianfanWsBridge(pageInfo, client);
     if (state?.onWsBuyerMessages) {
       registerBuyerMessageHandler(shopTitle, state.onWsBuyerMessages);
@@ -725,6 +731,7 @@ async function startQianfanMessageListener(options = {}) {
   startHeartbeat(state);
   startWatchdog(state);
   startHttpPolling(state, handlers);
+  scheduleCookieRefresh();
 
   activeListenerHandle = {
     pages,
