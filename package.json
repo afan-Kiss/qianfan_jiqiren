@@ -22,7 +22,7 @@
     "check:qianfan-send-bridge": "node scripts/check-qianfan-send-bridge-worker.js",
     "check:qianfan-send-retry": "node scripts/check-qianfan-send-retry.js",
     "check:qianfan-impaas-wake": "node scripts/check-qianfan-impaas-ws-wake.js",
-    "check:qianfan-runtime": "node scripts/check-qianfan-runtime-controller.js",
+    "check:qianfan-cookie-collector": "node scripts/check-qianfan-cookie-collector.js",
     "check:qianfan-kill-policy": "node scripts/check-qianfan-kill-policy.js",
     "check:start-idempotent": "node scripts/check-runtime-start-idempotent.js",
     "check:ui-log-dedup": "node scripts/check-ui-log-dedup.js",

@@ -5,6 +5,7 @@ node_modules/
 logs/
 /runtime/
 data/
+config/qianfan-shops.json
 exports/
 backup-before-restore-*/
 

@@ -1,0 +1,30 @@
+[
+  {
+    "shopName": "店铺A",
+    "shopId": "",
+    "matchUrlKeyword": "seller/dashboard",
+    "matchTitleKeyword": "店铺A",
+    "accountKeyword": ""
+  },
+  {
+    "shopName": "店铺B",
+    "shopId": "",
+    "matchUrlKeyword": "",
+    "matchTitleKeyword": "店铺B",
+    "accountKeyword": ""
+  },
+  {
+    "shopName": "店铺C",
+    "shopId": "",
+    "matchUrlKeyword": "",
+    "matchTitleKeyword": "店铺C",
+    "accountKeyword": ""
+  },
+  {
+    "shopName": "店铺D",
+    "shopId": "",
+    "matchUrlKeyword": "",
+    "matchTitleKeyword": "店铺D",
+    "accountKeyword": ""
+  }
+]
