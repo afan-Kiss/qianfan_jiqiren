@@ -31,5 +31,12 @@
   "localControlCenter": {
     "enabled": true,
     "serverUrl": "http://127.0.0.1:4793"
+  },
+  "shopCookieUpload": {
+    "enabled": true,
+    "serverUrl": "http://8.137.126.18",
+    "uploadPath": "/api/shop-cookies/update",
+    "statusPath": "/api/shop-cookies/status",
+    "timeoutMs": 20000
   }
 }

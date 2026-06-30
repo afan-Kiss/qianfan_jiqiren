@@ -24,6 +24,7 @@
     "check:qianfan-impaas-wake": "node scripts/check-qianfan-impaas-ws-wake.js",
     "check:qianfan-cookie-collector": "node scripts/check-qianfan-cookie-collector.js",
     "check:qianfan-cookie-sync-api": "node scripts/check-qianfan-cookie-sync-api.js",
+    "check:shop-cookie-upload": "node scripts/check-shop-cookie-upload.js",
     "check:qianfan-kill-policy": "node scripts/check-qianfan-kill-policy.js",
     "check:start-idempotent": "node scripts/check-runtime-start-idempotent.js",
     "check:ui-log-dedup": "node scripts/check-ui-log-dedup.js",
@@ -108,6 +109,12 @@
           "!logs/**",
           "!uploads/**"
         ]
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "config.wxbot-new.json",
+        "to": "config.wxbot-new.json"
       }
     ],
     "asar": true,

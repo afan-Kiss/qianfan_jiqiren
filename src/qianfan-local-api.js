@@ -6,6 +6,7 @@ const net = require('net');
 const config = require('./wechat/wxbot-new-config');
 const { println } = require('./utils');
 const { runSyncNowAll, getAutoSyncStatus } = require('./qianfan-cookie-collector');
+const { runShopCookieUploadAll, getShopCookieUploadConfig } = require('./shop-cookie-uploader');
 
 const DEFAULT_PORT = 9323;
 
@@ -79,6 +80,39 @@ async function startQianfanLocalApi(options = {}) {
             message: err.message || 'Cookie 同步失败',
             shops: [],
           });
+        }
+        return;
+      }
+
+      if (req.method === 'POST' && pathOnly === '/api/shop-cookies/upload') {
+        await readBody(req).catch(() => '');
+        try {
+          const result = await runShopCookieUploadAll('local_api', {
+            force: true,
+            verifyStatus: true,
+          });
+          sendJson(res, result.ok ? 200 : 503, result);
+        } catch (err) {
+          sendJson(res, 500, {
+            ok: false,
+            message: err.message || '四店 Cookie 提交失败',
+            shops: [],
+          });
+        }
+        return;
+      }
+
+      if (req.method === 'GET' && pathOnly === '/api/shop-cookies/status') {
+        try {
+          const { fetchShopCookieStatus } = require('./shop-cookie-uploader');
+          const result = await fetchShopCookieStatus();
+          sendJson(res, result.ok ? 200 : result.httpStatus || 503, {
+            ok: result.ok,
+            data: result.data,
+            httpStatus: result.httpStatus,
+          });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || 'status failed' });
         }
         return;
       }

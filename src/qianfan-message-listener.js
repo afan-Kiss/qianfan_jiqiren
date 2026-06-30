@@ -46,6 +46,7 @@ const {
   prewarmShopWsSend,
 } = require('./qianfan-ws-bridge');
 const { onBuyerMessage: triggerCookieOnBuyerMessage, scheduleCookieRefresh, onShopSwitch } = require('./qianfan-cookie-collector');
+const { triggerShopCookieUploadOnBuyerMessage } = require('./shop-cookie-uploader');
 const { println } = require('./utils');
 const {
   withTimeout,
@@ -192,6 +193,7 @@ function emitBuyerMessage(message, handlers, reasonRef, options = {}) {
     }
     handlers.onBuyerMessage(message, { source, httpFallback: options.httpFallback === true });
     triggerCookieOnBuyerMessage(message);
+    triggerShopCookieUploadOnBuyerMessage(message);
     lastHeartbeatAt = Date.now();
     lastBuyerMessageAt = Date.now();
   }

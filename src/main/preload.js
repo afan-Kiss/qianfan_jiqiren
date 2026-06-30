@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('qianfanApp', {
   getStatus: () => ipcRenderer.invoke('app:get-status'),
   getTodayStats: () => ipcRenderer.invoke('app:get-today-stats'),
   checkEnvironment: () => ipcRenderer.invoke('app:check-environment'),
+  uploadShopCookies: () => ipcRenderer.invoke('app:upload-shop-cookies'),
   sendTestMessage: (wxid) => ipcRenderer.invoke('app:send-test-wechat-message', wxid),
   onStatusChanged: (callback) => {
     const handler = () => callback();

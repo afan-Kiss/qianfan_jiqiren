@@ -284,6 +284,18 @@ const qianfanDebug = {
   root: ROOT,
 };
 
+const shopCookieUploadFile = fileCfg.shopCookieUpload || {};
+const shopCookieUpload = {
+  enabled: shopCookieUploadFile.enabled !== false,
+  serverUrl: String(
+    process.env.SHOP_COOKIE_UPLOAD_URL || shopCookieUploadFile.serverUrl || 'http://8.137.126.18'
+  ).replace(/\/$/, ''),
+  uploadPath: String(shopCookieUploadFile.uploadPath || '/api/shop-cookies/update').trim() || '/api/shop-cookies/update',
+  statusPath: String(shopCookieUploadFile.statusPath || '/api/shop-cookies/status').trim() || '/api/shop-cookies/status',
+  uploadToken: String(process.env.SHOP_COOKIE_UPLOAD_TOKEN || shopCookieUploadFile.uploadToken || '').trim(),
+  timeoutMs: pickNum('shopCookieUploadTimeoutMs', shopCookieUploadFile.timeoutMs || 20000),
+};
+
 const controlCenterFile = fileCfg.controlCenter || {};
 const controlCenter = {
   enabled: controlCenterFile.enabled !== false,
@@ -333,6 +345,7 @@ const config = {
   notifyAccounts,
   qianfanDevtoolsPort: qianfanDebug.devtoolsPort,
   qianfanDebug,
+  shopCookieUpload,
   controlCenter,
   username: pick('username', wx.username || ''),
   password: pick('password', wx.password || ''),

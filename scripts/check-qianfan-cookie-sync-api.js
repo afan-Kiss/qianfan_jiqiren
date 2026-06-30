@@ -8,6 +8,7 @@ const apiSrc = fs.readFileSync(path.join(__dirname, '../src/qianfan-local-api.js
 assert.strictEqual(typeof collector.runSyncNowAll, 'function');
 assert.strictEqual(typeof collector.getAutoSyncStatus, 'function');
 assert(apiSrc.includes('/api/cookie/sync-now'));
+assert(apiSrc.includes('/api/shop-cookies/upload'));
 assert(apiSrc.includes('/api/health'));
 assert(!apiSrc.includes('res.end(cookie)'));
 

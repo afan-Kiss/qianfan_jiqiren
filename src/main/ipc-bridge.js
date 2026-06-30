@@ -14,6 +14,8 @@ const { stopRuntimeChildProcesses } = require('../shared/runtime-process-cleanup
 const { formatActivityLogEntry } = require('../shared/activity-log');
 const { formatLogTime } = require('../shared/user-activity-log');
 const { isRoutineHealthActivityMessage } = require('../shared/runtime-health');
+const { getLocalApiPort } = require('../qianfan-local-api');
+const { runShopCookieUploadAll } = require('../shop-cookie-uploader');
 
 const ROOT = config.root;
 const CONFIG_FILE = path.join(ROOT, 'config.wxbot-new.json');
@@ -443,6 +445,29 @@ function isRuntimeRunning() {
   return ['starting', 'running', 'degraded'].includes(status.supervisorStatus);
 }
 
+async function uploadShopCookiesViaLocalApiOrDirect() {
+  const port = getLocalApiPort();
+  try {
+    const res = await fetchWithTimeout(`http://127.0.0.1:${port}/api/shop-cookies/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }, 35000);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok || res.status === 503) {
+      return { ...data, source: 'local_api' };
+    }
+  } catch {
+    // worker 本地 API 未就绪时，主进程直接通过 CDP 采集并上传
+  }
+
+  const result = await runShopCookieUploadAll('ui_manual', {
+    useDevToolsFallback: true,
+    verifyStatus: true,
+  });
+  return { ...result, source: 'main_cdp' };
+}
+
 function registerIpcHandlers(app) {
   ipcMain.handle('app:get-version', () => app.getVersion());
   ipcMain.handle('app:get-paths', () => getPaths());
@@ -612,6 +637,22 @@ function registerIpcHandlers(app) {
   ipcMain.handle('app:get-relay-logs', async () => getRuntimeStatus().recentLogs.slice(-80));
 
   ipcMain.handle('app:get-today-stats', async () => dataStore.getTodayStats());
+
+  ipcMain.handle('app:upload-shop-cookies', async () => {
+    try {
+      const result = await uploadShopCookiesViaLocalApiOrDirect();
+      return result;
+    } catch (err) {
+      return {
+        ok: false,
+        message: err.message || 'Cookie 提交失败',
+        shops: [],
+        success: 0,
+        failed: 4,
+        total: 4,
+      };
+    }
+  });
 }
 
 async function stopBackendServices() {

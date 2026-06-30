@@ -9,6 +9,7 @@ const state = {
   activities: [],
   autoStart: false,
   starting: false,
+  uploadingCookies: false,
   progressSteps: [],
   lastMessage: '',
   runtimeHealth: null,
@@ -36,6 +37,7 @@ const els = {
   btnStart: document.getElementById('btn-start'),
   btnStop: document.getElementById('btn-stop'),
   btnCheck: document.getElementById('btn-check'),
+  btnUploadCookies: document.getElementById('btn-upload-cookies'),
   wechatText: document.getElementById('wechat-text'),
   qianfanText: document.getElementById('qianfan-text'),
   notifierBadge: document.getElementById('notifier-badge'),
@@ -571,6 +573,10 @@ function renderButtons() {
   els.btnStart.disabled = running || state.starting;
   els.btnStop.disabled = !running || state.starting;
   els.btnCheck.disabled = state.starting;
+  if (els.btnUploadCookies) {
+    els.btnUploadCookies.disabled = state.starting || Boolean(state.uploadingCookies);
+    els.btnUploadCookies.textContent = state.uploadingCookies ? '提交中…' : '提交 Cookie';
+  }
 }
 
 function renderCards() {
@@ -799,6 +805,49 @@ async function handleCheckEnvironment() {
   }
 }
 
+function formatShopCookieFeedback(result) {
+  const shops = Array.isArray(result?.shops) ? result.shops : [];
+  if (!shops.length) return result?.message || 'Cookie 提交失败';
+  const okLines = shops.filter((s) => s.ok).map((s) => {
+    const preview = s.cookiePreview ? ` ${s.cookiePreview}` : '';
+    return `${s.shopName} ✓${preview}`;
+  });
+  const failLines = shops.filter((s) => !s.ok).map((s) => `${s.shopName} ✗ ${s.message || '失败'}`);
+  const summary = result.ok
+    ? `Cookie 提交成功（${result.success || okLines.length}/4）`
+    : `Cookie 提交${(result.success || 0) > 0 ? '部分成功' : '失败'}（${result.success || 0}/4）`;
+  return [summary, ...okLines, ...failLines].join('\n');
+}
+
+async function handleUploadShopCookies() {
+  if (!els.btnUploadCookies || state.uploadingCookies) return;
+  state.uploadingCookies = true;
+  renderButtons();
+  addActivity('正在采集并提交四店 Cookie…');
+  showToast('正在提交四店 Cookie…');
+  try {
+    const result = await window.qianfanApp.uploadShopCookies();
+    const feedback = formatShopCookieFeedback(result);
+    addActivity(feedback);
+    state.lastMessage = feedback.split('\n')[0];
+    renderAll();
+    showToast(feedback.split('\n')[0]);
+    if (result.ok && window.qianfanApp.showTrayNotification) {
+      void window.qianfanApp.showTrayNotification({
+        title: 'Cookie 提交成功',
+        body: feedback.split('\n')[0],
+      });
+    }
+  } catch (error) {
+    const msg = `Cookie 提交失败：${error.message}`;
+    addActivity(msg);
+    showToast(msg);
+  } finally {
+    state.uploadingCookies = false;
+    renderButtons();
+  }
+}
+
 async function handleStartRelay() {
   if (state.notifierCount === 0) {
     state.relayStatus = 'needs_action';
@@ -880,6 +929,9 @@ function bindEvents() {
   els.btnStart.addEventListener('click', () => void handleStartRelay());
   els.btnStop.addEventListener('click', () => void handleStopRelay());
   els.btnCheck.addEventListener('click', () => void handleCheckEnvironment());
+  if (els.btnUploadCookies) {
+    els.btnUploadCookies.addEventListener('click', () => void handleUploadShopCookies());
+  }
   els.btnSettings.addEventListener('click', openSettings);
   els.btnCloseSettings.addEventListener('click', closeSettings);
   els.btnOpenNotifierFromSettings.addEventListener('click', () => { closeSettings(); openNotifierPanel(); });

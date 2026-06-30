@@ -241,6 +241,13 @@ async function tryStartListener() {
     attachResult: readyResult.attachResult,
   });
 
+  try {
+    const { startQianfanLocalApi } = require('../qianfan-local-api');
+    await startQianfanLocalApi({ silent: true });
+  } catch (err) {
+    runtime.log('warn', `[本地API] 启动失败：${err.message || err}`);
+  }
+
   if (!started.ok) {
     const reason = started.error?.message || '千帆监听启动失败';
     const waitingShops = /店铺.*加载|工作台页面/.test(reason);
