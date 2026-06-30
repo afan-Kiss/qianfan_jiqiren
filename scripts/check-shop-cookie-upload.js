@@ -37,6 +37,8 @@ assert(fullSrc.includes('Storage.getCookies'));
 assert(uploaderSrc.includes('缺少 a1，跳过上传'));
 assert(uploaderSrc.includes('[Cookie诊断]'));
 assert(uploaderSrc.includes('payload cookie containsA1'));
+assert(uploaderSrc.includes('shop.cookie typeof='));
+assert(uploaderSrc.includes('[object Object]'));
 assert(apiSrc.includes('/api/shop-cookies/upload'));
 
 const xy = uploader.matchPageToShop('XY祥钰珠宝-工作台');

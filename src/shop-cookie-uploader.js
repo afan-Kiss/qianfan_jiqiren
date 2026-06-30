@@ -386,20 +386,35 @@ function findStatusEntry(entries, shopKey, shopName) {
   return null;
 }
 
+function isValidCookieString(cookie) {
+  if (typeof cookie !== 'string') return false;
+  const trimmed = cookie.trim();
+  if (!trimmed || trimmed.length < 20) return false;
+  if (trimmed === '[object Object]') return false;
+  return true;
+}
+
 function buildUploadPayload(collectedByKey) {
   const shops = {};
   for (const [shopKey, collected] of Object.entries(collectedByKey)) {
     const shopName = shopDisplayName(shopKey);
-    const payloadContainsA1 = cookieContainsA1(collected.cookie);
+    const cookieStr = collected.cookie;
+    const cookieType = typeof cookieStr;
+    const payloadContainsA1 = cookieContainsA1(cookieStr);
     println(
-      `[Cookie诊断] ${shopName} payload cookie containsA1=${payloadContainsA1} length=${collected.cookie?.length || 0} keys=${(collected.cookieKeys || extractCookieKeys(collected.cookie)).join(',')}`
+      `[Cookie诊断] ${shopName} shop.cookie typeof=${cookieType} payload cookie containsA1=${payloadContainsA1} length=${cookieStr?.length || 0} keys=${(collected.cookieKeys || extractCookieKeys(cookieStr)).join(',')}`
     );
+    if (!isValidCookieString(cookieStr)) {
+      println(`[Cookie诊断] ${shopName} 跳过：cookie 不是有效字符串（typeof=${cookieType}）`);
+      continue;
+    }
     shops[shopKey] = {
       shopName,
       liveRoomName: shopName,
-      cookie: collected.cookie,
+      cookie: cookieStr,
       userAgent: collected.userAgent || '',
       url: collected.lastSeenUrl || '',
+      collectedAt: collected.capturedAt || new Date().toISOString(),
     };
   }
   return {
@@ -639,6 +654,11 @@ function filterUploadableCookies(collectedByKey) {
   const uploadable = {};
   const skippedNoA1 = [];
   for (const [shopKey, collected] of Object.entries(collectedByKey || {})) {
+    if (!isValidCookieString(collected.cookie)) {
+      skippedNoA1.push(shopDisplayName(shopKey));
+      println(`[Cookie上传] ${shopDisplayName(shopKey)}：cookie 无效（typeof=${typeof collected.cookie}），跳过上传`);
+      continue;
+    }
     const hasA1 = collected.hasA1 || cookieContainsA1(collected.cookie);
     if (hasA1) {
       uploadable[shopKey] = collected;
