@@ -1,6 +1,8 @@
 /**
  * 四店 Cookie 批量上传到主播分析系统 /api/shop-cookies（Token 可选）
  */
+const fs = require('fs');
+const path = require('path');
 const CDP = require('chrome-remote-interface');
 const config = require('./wechat/wxbot-new-config');
 const { fetchDevToolsJsonList, getPageTargets } = require('./devtools-list');
@@ -12,10 +14,63 @@ const {
   logCookieCollectionDiagnostics,
   logCookieDiagnostics,
   cookieContainsA1,
+  cookieContainsArkToken,
+  cookieContainsWalleToken,
   extractCookieKeys,
+  extractCookieValueByName,
+  mergeCookiePartsPreferLongest,
+  ARK_TOKEN_KEY,
 } = require('./qianfan-full-cookie-collect');
 const { fetchWithTimeout } = require('./fetch-timeout');
 const { println } = require('./utils');
+
+const UPLOAD_CACHE_FILE = path.join(config.root || process.cwd(), 'data', 'shop-cookie-upload-cache.json');
+
+function loadUploadCookieCache() {
+  try {
+    if (!fs.existsSync(UPLOAD_CACHE_FILE)) return {};
+    const raw = JSON.parse(fs.readFileSync(UPLOAD_CACHE_FILE, 'utf8'));
+    return raw && typeof raw === 'object' ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveUploadCookieCache(cache) {
+  try {
+    fs.mkdirSync(path.dirname(UPLOAD_CACHE_FILE), { recursive: true });
+    fs.writeFileSync(UPLOAD_CACHE_FILE, JSON.stringify(cache, null, 2), 'utf8');
+  } catch {
+    // ignore cache write errors
+  }
+}
+
+function mergePreserveArkFromCache(shopKey, cookieStr) {
+  const cached = loadUploadCookieCache()[shopKey];
+  const cachedCookie = String(cached?.cookie || '').trim();
+  if (!cachedCookie) return { cookie: cookieStr, mergedFromCache: false };
+  if (cookieContainsArkToken(cookieStr)) return { cookie: cookieStr, mergedFromCache: false };
+  if (!cookieContainsArkToken(cachedCookie)) return { cookie: cookieStr, mergedFromCache: false };
+  const arkValue = extractCookieValueByName(cachedCookie, ARK_TOKEN_KEY);
+  if (!arkValue) return { cookie: cookieStr, mergedFromCache: false };
+  const merged = mergeCookiePartsPreferLongest(cookieStr, `${ARK_TOKEN_KEY}=${arkValue}`);
+  println(`[Cookie诊断] ${shopDisplayName(shopKey)} 从本地缓存补回 access-token-ark（新采集缺 ark）`);
+  return { cookie: merged, mergedFromCache: true };
+}
+
+function applyCachedArkMerge(collectedByKey) {
+  for (const [shopKey, collected] of Object.entries(collectedByKey || {})) {
+    const { cookie, mergedFromCache } = mergePreserveArkFromCache(shopKey, collected.cookie);
+    if (!mergedFromCache) continue;
+    collected.cookie = cookie;
+    collected.cookieHash = hashCookie(cookie);
+    collected.hasArk = cookieContainsArkToken(cookie);
+    collected.cookieKeys = extractCookieKeys(cookie);
+    collected.cookieKeyCount = collected.cookieKeys.length;
+    collected.arkMergedFromCache = true;
+  }
+  return collectedByKey;
+}
 
 const CANONICAL_SHOPS = [
   { shopKey: 'xiangyu', shopName: '祥钰珠宝', matchNames: ['祥钰珠宝'] },
@@ -211,6 +266,7 @@ async function collectShopCookieFromBridge(bridge, shopRow, pageMeta = {}) {
     targetId: full.targetId || pageMeta.targetId || '',
     browserContextId: full.browserContextId || '',
     payloadContainsA1: full.hasA1,
+    payloadContainsArkToken: full.hasArk,
   };
   logCookieDiagnostics(shopRow.shopName, diagnostics);
 
@@ -222,6 +278,8 @@ async function collectShopCookieFromBridge(bridge, shopRow, pageMeta = {}) {
     cookie: full.cookie,
     cookieHash: full.cookieHash || hashCookie(full.cookie),
     hasA1: full.hasA1,
+    hasArk: full.hasArk,
+    hasWalle: full.hasWalle,
     cookieKeyCount: full.cookieKeyCount,
     cookieKeys: full.cookieKeys,
     source: 'qianfan-full-cdp',
@@ -326,7 +384,7 @@ async function collectAllShopCookies(options = {}) {
   }
 
   return {
-    collectedByKey,
+    collectedByKey: applyCachedArkMerge(collectedByKey),
     missing: missing.map((r) => r.shopName),
     incomplete,
     count: Object.keys(collectedByKey).length,
@@ -401,9 +459,14 @@ function buildUploadPayload(collectedByKey) {
     const cookieStr = collected.cookie;
     const cookieType = typeof cookieStr;
     const payloadContainsA1 = cookieContainsA1(cookieStr);
+    const payloadContainsArkToken = cookieContainsArkToken(cookieStr);
+    const payloadContainsWalleToken = cookieContainsWalleToken(cookieStr);
     println(
-      `[Cookie诊断] ${shopName} shop.cookie typeof=${cookieType} payload cookie containsA1=${payloadContainsA1} length=${cookieStr?.length || 0} keys=${(collected.cookieKeys || extractCookieKeys(cookieStr)).join(',')}`
+      `[Cookie诊断] ${shopName} shop.cookie typeof=${cookieType} containsA1=${payloadContainsA1} containsArkToken=${payloadContainsArkToken} containsWalleToken=${payloadContainsWalleToken} length=${cookieStr?.length || 0} keys=${(collected.cookieKeys || extractCookieKeys(cookieStr)).join(',')}`
     );
+    if (!payloadContainsArkToken) {
+      println(`[Cookie上传] ${shopName}：containsA1=true 但缺 access-token-ark，上传后可能无法同步订单`);
+    }
     if (!isValidCookieString(cookieStr)) {
       println(`[Cookie诊断] ${shopName} 跳过：cookie 不是有效字符串（typeof=${cookieType}）`);
       continue;
@@ -519,6 +582,10 @@ function applyStatusToShopResults(shopResults, statusPayload) {
         shop.ok = false;
         shop.message = `服务器验证：Cookie 缺少 a1，请刷新该店商家后台后重新提交`;
         println(`[Cookie上传] ${shop.shopName}：服务器反馈缺少 a1，需重新采集完整 Cookie`);
+      } else if (/access-token-ark/i.test(reasonText)) {
+        shop.ok = true;
+        shop.message = `已上传，但缺少 access-token-ark，请打开该店订单/数据页面后重新提交`;
+        println(`[Cookie上传] ${shop.shopName}：服务器反馈缺少 access-token-ark，请在千帆点击订单管理后重试`);
       } else {
         shop.ok = true;
         shop.message = `已上传，验证失败，请重新获取 Cookie（${reasonText || 'invalid'}）`;
@@ -621,6 +688,20 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
   const failed = shopResults.length - success;
   const allOk = success === shopKeys.length;
 
+  if (success > 0) {
+    const cache = loadUploadCookieCache();
+    for (const shopKey of shopKeys) {
+      const collected = collectedByKey[shopKey];
+      if (!collected?.cookie || !cookieContainsA1(collected.cookie)) continue;
+      cache[shopKey] = {
+        cookie: collected.cookie,
+        savedAt: new Date().toISOString(),
+        hasArk: cookieContainsArkToken(collected.cookie),
+      };
+    }
+    saveUploadCookieCache(cache);
+  }
+
   return {
     ok: allOk,
     reason: allOk ? 'ok' : success > 0 ? 'partial_failed' : 'failed',
@@ -662,6 +743,9 @@ function filterUploadableCookies(collectedByKey) {
     const hasA1 = collected.hasA1 || cookieContainsA1(collected.cookie);
     if (hasA1) {
       uploadable[shopKey] = collected;
+      if (!(collected.hasArk || cookieContainsArkToken(collected.cookie))) {
+        println(`[Cookie上传] ${shopDisplayName(shopKey)}：已上传但缺 access-token-ark，canSyncOrders 可能为 false`);
+      }
     } else {
       skippedNoA1.push(shopDisplayName(shopKey));
       println(`[Cookie上传] ${shopDisplayName(shopKey)}：缺少 a1，跳过上传`);
@@ -816,5 +900,7 @@ module.exports = {
   fetchShopCookieStatus,
   maskCookiePreview,
   cookieContainsA1,
+  cookieContainsArkToken,
+  cookieContainsWalleToken,
   matchPageToShop,
 };

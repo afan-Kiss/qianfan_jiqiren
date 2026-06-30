@@ -21,6 +21,9 @@ const CRITICAL_COOKIE_NAMES = new Set([
   'access-token-walle.xiaohongshu.com',
 ]);
 
+const ARK_TOKEN_KEY = 'access-token-ark.xiaohongshu.com';
+const WALLE_TOKEN_KEY = 'access-token-walle.xiaohongshu.com';
+
 const XHS_COOKIE_URLS = [
   'https://www.xiaohongshu.com',
   'https://edith.xiaohongshu.com',
@@ -31,6 +34,28 @@ const XHS_COOKIE_URLS = [
   'https://seller.xiaohongshu.com',
   'https://fe.xiaohongshu.com',
   'https://zhaoshang.xiaohongshu.com',
+  'https://ark.xiaohongshu.com/app-order/order/query',
+  'https://ark.xiaohongshu.com/app-seller/seller/home',
+  'https://ark.xiaohongshu.com/app-review/review-manage',
+];
+
+const ARK_PROBE_FETCH_URLS = [
+  'https://ark.xiaohongshu.com/api/edith/home/get_shop_score',
+  'https://ark.xiaohongshu.com/api/edith/order/query/query_list?page=1&pageSize=1',
+];
+
+const ARK_PROBE_PAGE_URLS = [
+  'https://ark.xiaohongshu.com/app-order/order/query',
+  'https://ark.xiaohongshu.com/app-seller/seller/home',
+];
+
+const ARK_REQUEST_URL_HINTS = [
+  'ark.xiaohongshu.com',
+  '/api/ark/',
+  '/api/edith/',
+  '/api/order',
+  '/app-order/',
+  'app-seller',
 ];
 
 function isXhsRelatedDomain(domain) {
@@ -40,6 +65,41 @@ function isXhsRelatedDomain(domain) {
 
 function cookieContainsA1(cookieStr) {
   return /(?:^|;\s*)a1=[^;]+/i.test(String(cookieStr || ''));
+}
+
+function cookieContainsArkToken(cookieStr) {
+  const text = String(cookieStr || '');
+  return (
+    /(?:^|;\s*)access-token-ark\.xiaohongshu\.com=[^;]+/i.test(text) ||
+    /(?:^|;\s*)access-token-ark=[^;]+/i.test(text)
+  );
+}
+
+function cookieContainsWalleToken(cookieStr) {
+  const text = String(cookieStr || '');
+  return (
+    /(?:^|;\s*)access-token-walle\.xiaohongshu\.com=[^;]+/i.test(text) ||
+    /(?:^|;\s*)access-token-walle=[^;]+/i.test(text)
+  );
+}
+
+function extractCookieValueByName(cookieStr, name) {
+  const target = String(name || '').trim();
+  if (!target) return '';
+  for (const seg of String(cookieStr || '').split(';')) {
+    const piece = seg.trim();
+    if (!piece) continue;
+    const eq = piece.indexOf('=');
+    if (eq <= 0) continue;
+    const key = piece.slice(0, eq).trim();
+    if (key === target) return piece.slice(eq + 1).trim();
+  }
+  return '';
+}
+
+function isArkRelatedRequestUrl(url) {
+  const u = String(url || '').toLowerCase();
+  return ARK_REQUEST_URL_HINTS.some((hint) => u.includes(hint));
 }
 
 function extractCookieKeys(cookieStr) {
@@ -244,8 +304,134 @@ function buildSourceDiag(label, cookieStr, extra = {}) {
     length: cookieStr.length,
     keys,
     containsA1: cookieContainsA1(cookieStr),
+    containsArkToken: cookieContainsArkToken(cookieStr),
+    containsWalleToken: cookieContainsWalleToken(cookieStr),
     ...extra,
   };
+}
+
+function parseSetCookieHeader(setCookieRaw) {
+  const parts = [];
+  const text = String(setCookieRaw || '');
+  if (!text) return parts;
+  for (const seg of text.split(/\n|,(?=[^;]+?=)/)) {
+    const piece = seg.trim();
+    if (!piece) continue;
+    const eq = piece.indexOf('=');
+    if (eq <= 0) continue;
+    const name = piece.slice(0, eq).trim();
+    const value = piece.slice(eq + 1).split(';')[0].trim();
+    if (name && value) parts.push(`${name}=${value}`);
+  }
+  return parts;
+}
+
+function attachNetworkCookieSniffer(client) {
+  const buckets = { ark: [], walle: [], order: [], any: [] };
+  const pushCookieText = (cookie, url) => {
+    if (!cookie) return;
+    buckets.any.push(cookie);
+    if (isArkRelatedRequestUrl(url) || cookieContainsArkToken(cookie)) buckets.ark.push(cookie);
+    else if (String(url).includes('walle.xiaohongshu.com') || cookieContainsWalleToken(cookie)) buckets.walle.push(cookie);
+    else if (/\/api\/(order|ark|edith)/i.test(String(url))) buckets.order.push(cookie);
+  };
+  const onRequest = (params) => {
+    const url = String(params?.request?.url || '');
+    const cookie = String(params?.request?.headers?.Cookie || params?.request?.headers?.cookie || '').trim();
+    pushCookieText(cookie, url);
+  };
+  const onExtra = (params) => {
+    const url = String(params?.request?.url || params?.url || '');
+    const cookie = String(params?.headers?.Cookie || params?.headers?.cookie || '').trim();
+    pushCookieText(cookie, url);
+  };
+  const onResponse = (params) => {
+    const url = String(params?.response?.url || '');
+    if (!isArkRelatedRequestUrl(url) && !/\/api\/(order|ark|edith)/i.test(url)) return;
+    const headers = params?.response?.headers || {};
+    for (const [key, value] of Object.entries(headers)) {
+      if (String(key).toLowerCase() !== 'set-cookie') continue;
+      const pairs = parseSetCookieHeader(value);
+      if (pairs.length) pushCookieText(pairs.join('; '), url);
+    }
+  };
+  try {
+    client.Network.requestWillBeSent(onRequest);
+  } catch {
+    // ignore
+  }
+  try {
+    if (client.Network.requestWillBeSentExtraInfo) {
+      client.Network.requestWillBeSentExtraInfo(onExtra);
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    client.Network.responseReceived(onResponse);
+  } catch {
+    // ignore
+  }
+  return {
+    mergeSniffed() {
+      return mergeCookiePartsPreferLongest(...buckets.ark, ...buckets.walle, ...buckets.order, ...buckets.any);
+    },
+    stats() {
+      return {
+        arkRequests: buckets.ark.length,
+        walleRequests: buckets.walle.length,
+        orderRequests: buckets.order.length,
+        anyRequests: buckets.any.length,
+      };
+    },
+  };
+}
+
+async function probeArkTokenViaPage(client, pageUrl) {
+  const chunks = [];
+  await ensureNetworkEnabled(client);
+
+  if (client.Runtime?.evaluate) {
+    const fetchUrls = ARK_PROBE_FETCH_URLS.map((u) => JSON.stringify(u)).join(',');
+    try {
+      await client.Runtime.evaluate({
+        expression: `(async()=>{ const urls=[${fetchUrls}]; for (const u of urls){ try{ await fetch(u,{credentials:'include',mode:'cors',headers:{accept:'application/json, text/plain, */*',referer:'https://ark.xiaohongshu.com/app-order/order/query'}});}catch(e){} await new Promise(r=>setTimeout(r,400)); } return true; })()`,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      await sleep(2500);
+      const afterFetch = await readPageCdpCookies(client, pageUrl);
+      if (afterFetch.cookie) chunks.push(afterFetch.cookie);
+    } catch {
+      // ignore fetch probe
+    }
+  }
+
+  if (!chunks.some(cookieContainsArkToken) && client.Page?.navigate) {
+    const origin = String(pageUrl || '').split('#')[0];
+    for (const arkUrl of ARK_PROBE_PAGE_URLS) {
+      try {
+        println(`[Cookie采集] 尝试打开 ark 页面以获取 access-token-ark：${arkUrl}`);
+        await client.Page.navigate({ url: arkUrl });
+        await sleep(3500);
+        const afterNav = await readPageCdpCookies(client, arkUrl);
+        if (afterNav.cookie) chunks.push(afterNav.cookie);
+        if (cookieContainsArkToken(afterNav.cookie)) break;
+      } catch {
+        // ignore per-url
+      }
+    }
+    if (origin) {
+      try {
+        await client.Page.navigate({ url: origin });
+        await sleep(800);
+      } catch {
+        // ignore restore
+      }
+    }
+  }
+
+  return mergeCookiePartsPreferLongest(...chunks);
 }
 
 function logCookieDiagnostics(shopName, diag) {
@@ -269,15 +455,23 @@ function logCookieDiagnostics(shopName, diag) {
     println(`[Cookie诊断] 合并后 keys=${diag.afterMergeKeys.join(',')}`);
   }
   println(
-    `[Cookie诊断] merged count=${diag.mergedCount} length=${diag.mergedLength} containsA1=${diag.containsA1}`
+    `[Cookie诊断] merged count=${diag.mergedCount} length=${diag.mergedLength} containsA1=${diag.containsA1} containsArkToken=${diag.containsArkToken} containsWalleToken=${diag.containsWalleToken}`
   );
   if (diag.a1Meta) {
     println(
       `[Cookie诊断] a1 meta domain=${diag.a1Meta.domain} path=${diag.a1Meta.path} httpOnly=${diag.a1Meta.httpOnly} secure=${diag.a1Meta.secure} sameSite=${diag.a1Meta.sameSite || '-'}`
     );
   }
+  if (diag.networkSniff) {
+    println(
+      `[Cookie诊断] networkSniff ark=${diag.networkSniff.arkRequests || 0} walle=${diag.networkSniff.walleRequests || 0} order=${diag.networkSniff.orderRequests || 0}`
+    );
+  }
   if (diag.payloadContainsA1 != null) {
     println(`[Cookie诊断] payload cookie containsA1=${diag.payloadContainsA1}`);
+  }
+  if (diag.payloadContainsArkToken != null) {
+    println(`[Cookie诊断] payload cookie containsArkToken=${diag.payloadContainsArkToken}`);
   }
   if (!diag.containsA1) {
     println(
@@ -285,6 +479,13 @@ function logCookieDiagnostics(shopName, diag) {
     );
     println(
       `[Cookie诊断] 提示：请在同一个 Chrome 窗口打开 https://www.xiaohongshu.com 确认已登录，再打开对应商家后台/千帆页面后重新提交`
+    );
+  } else if (!diag.containsArkToken) {
+    println(
+      `[Cookie诊断] ${shopName} 缺少 access-token-ark.xiaohongshu.com，请打开该店商家后台「订单/数据/经营」页面后重新提交 Cookie`
+    );
+    println(
+      `[Cookie诊断] 建议：在千帆工作台点击「订单管理」或打开 https://ark.xiaohongshu.com/app-order/order/query 后再提交`
     );
   }
 }
@@ -295,11 +496,15 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
   const pageUrl = String(bridge.pageInfo?.url || bridge.lastSeenUrl || 'https://walle.xiaohongshu.com').trim();
   const pageTitle = String(bridge.pageInfo?.pageTitle || bridge.pageInfo?.title || bridge.shopTitle || '').trim();
   const headerCookie = normalizeCookie(bridge.lastRequestCookie || '');
+  const arkHeaderCookie = normalizeCookie(bridge.lastArkRequestCookie || bridge.lastOrderRequestCookie || '');
+  const walleHeaderCookie = normalizeCookie(bridge.lastWalleRequestCookie || '');
   const targetMeta = await getPageTargetMeta(client);
+  const sniffer = attachNetworkCookieSniffer(client);
 
   let pageCdp = await readPageCdpCookies(client, pageUrl);
   let browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
   let pageCookies = await readPageDocumentCookie(client);
+  let probeCookie = '';
 
   if (!cookieContainsA1(pageCdp.cookie) && !cookieContainsA1(browserStorage.cookie) && options.retryReload !== false && client.Page?.reload) {
     try {
@@ -314,18 +519,43 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
     }
   }
 
-  const beforeParts = [pageCdp.cookie, browserStorage.cookie, pageCookies, headerCookie].filter(Boolean);
-  const beforeMergeKeys = [...new Set(beforeParts.flatMap((p) => extractCookieKeys(p)))].sort();
-
-  const cookie = mergeCookiePartsPreferLongest(
+  let mergedSoFar = mergeCookiePartsPreferLongest(
     pageCdp.cookie,
     browserStorage.cookie,
     pageCookies,
-    headerCookie
+    headerCookie,
+    arkHeaderCookie,
+    walleHeaderCookie,
+    sniffer.mergeSniffed()
   );
+
+  if (cookieContainsA1(mergedSoFar) && !cookieContainsArkToken(mergedSoFar) && options.probeArk !== false) {
+    probeCookie = await probeArkTokenViaPage(client, pageUrl);
+    await sleep(1000);
+    pageCdp = await readPageCdpCookies(client, pageUrl);
+    browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
+  }
+
+  const sniffedAfter = sniffer.mergeSniffed();
+  const beforeParts = [
+    pageCdp.cookie,
+    browserStorage.cookie,
+    pageCookies,
+    headerCookie,
+    arkHeaderCookie,
+    walleHeaderCookie,
+    sniffedAfter,
+    probeCookie,
+  ].filter(Boolean);
+  const beforeMergeKeys = [...new Set(beforeParts.flatMap((p) => extractCookieKeys(p)))].sort();
+
+  const cookie = mergeCookiePartsPreferLongest(...beforeParts);
   const afterMergeKeys = extractCookieKeys(cookie);
   const hasA1 = cookieContainsA1(cookie);
+  const hasArk = cookieContainsArkToken(cookie);
+  const hasWalle = cookieContainsWalleToken(cookie);
   const a1Meta = pageCdp.a1Meta || browserStorage.a1Meta || null;
+  const networkSniff = sniffer.stats();
 
   const diagnostics = {
     shopName: bridge.shopTitle || '',
@@ -345,6 +575,10 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
         count: browserStorage.count,
       }),
       buildSourceDiag('lastRequestCookie', headerCookie),
+      buildSourceDiag('lastArkRequestCookie', arkHeaderCookie),
+      buildSourceDiag('lastWalleRequestCookie', walleHeaderCookie),
+      buildSourceDiag('networkSniff', sniffedAfter, networkSniff),
+      buildSourceDiag('arkProbe', probeCookie),
       buildSourceDiag('document.cookie(ref)', pageCookies),
     ],
     beforeMergeKeys,
@@ -352,6 +586,9 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
     mergedCount: afterMergeKeys.length,
     mergedLength: cookie.length,
     containsA1: hasA1,
+    containsArkToken: hasArk,
+    containsWalleToken: hasWalle,
+    networkSniff,
     a1Meta,
   };
 
@@ -363,6 +600,8 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
     cookie,
     cookieHash: hashCookie(cookie),
     hasA1,
+    hasArk,
+    hasWalle,
     cookieKeyCount: afterMergeKeys.length,
     cookieKeys: afterMergeKeys,
     pageUrl,
@@ -375,6 +614,8 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
       browserLength: browserStorage.cookie.length,
       pageLength: pageCookies.length,
       headerLength: headerCookie.length,
+      arkHeaderLength: arkHeaderCookie.length,
+      probeLength: probeCookie.length,
     },
   };
 }
@@ -402,13 +643,20 @@ function sleep(ms) {
 }
 
 module.exports = {
+  ARK_TOKEN_KEY,
+  WALLE_TOKEN_KEY,
   CRITICAL_COOKIE_NAMES,
   XHS_COOKIE_URLS,
+  ARK_PROBE_PAGE_URLS,
   cookieContainsA1,
+  cookieContainsArkToken,
+  cookieContainsWalleToken,
+  extractCookieValueByName,
   extractCookieKeys,
   mergeCookiePartsPreferLongest,
   mergeCdpCookieEntries,
   collectFullCookiesFromBridge,
   logCookieCollectionDiagnostics,
   logCookieDiagnostics,
+  isArkRelatedRequestUrl,
 };

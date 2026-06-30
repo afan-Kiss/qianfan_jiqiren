@@ -669,12 +669,33 @@ function onShopSwitch(shopTitle) {
   void triggerCookieCheck(shopTitle, 'shop_switch');
 }
 
-function noteBridgeRequestCookie(bridge, cookieHeader) {
+function noteBridgeRequestCookie(bridge, cookieHeader, requestUrl = '') {
   const raw = String(cookieHeader || '').trim();
   if (!raw || !bridge) return;
+  const url = String(requestUrl || '').trim();
+
   if (!bridge.lastRequestCookie || raw.length >= bridge.lastRequestCookie.length) {
     bridge.lastRequestCookie = raw;
     bridge.lastCookieCapturedAt = Date.now();
+  }
+
+  const {
+    cookieContainsArkToken,
+    cookieContainsWalleToken,
+    isArkRelatedRequestUrl,
+    mergeCookiePartsPreferLongest,
+  } = require('./qianfan-full-cookie-collect');
+
+  if (isArkRelatedRequestUrl(url) || cookieContainsArkToken(raw)) {
+    bridge.lastArkRequestCookie = mergeCookiePartsPreferLongest(bridge.lastArkRequestCookie || '', raw);
+    bridge.lastArkCapturedAt = Date.now();
+    if (url && /\/api\/(order|ark|edith)/i.test(url)) {
+      bridge.lastOrderRequestCookie = bridge.lastArkRequestCookie;
+    }
+  }
+  if (url.includes('walle.xiaohongshu.com') || cookieContainsWalleToken(raw)) {
+    bridge.lastWalleRequestCookie = mergeCookiePartsPreferLongest(bridge.lastWalleRequestCookie || '', raw);
+    bridge.lastWalleCapturedAt = Date.now();
   }
 }
 
