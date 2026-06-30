@@ -32,14 +32,28 @@ const loginRecoveredShops = new Set();
 const failureCooldownUntil = new Map();
 let lastAutoSyncAt = null;
 
+function getLocalControlConfig() {
+  const lc = config.localControlCenter || {};
+  const serverUrl = String(
+    process.env.LOCAL_CONTROL_URL || lc.serverUrl || 'http://127.0.0.1:4793'
+  ).replace(/\/$/, '');
+  return {
+    enabled: lc.enabled !== false,
+    serverUrl,
+  };
+}
+
 function getControlConfig() {
   const cc = config.controlCenter || {};
   const serverUrl = String(
     process.env.CONTROL_SERVER_URL || cc.serverUrl || 'http://8.137.126.18/control'
   ).replace(/\/$/, '');
   const serviceToken = String(process.env.CONTROL_SERVICE_TOKEN || cc.serviceToken || '').trim();
+  const local = getLocalControlConfig();
   return {
-    enabled: cc.enabled !== false && Boolean(serviceToken),
+    enabled: local.enabled || (cc.enabled !== false && Boolean(serviceToken)),
+    localEnabled: local.enabled,
+    localServerUrl: local.serverUrl,
     serverUrl,
     serviceToken,
     collectorMachine: String(process.env.CONTROL_COLLECTOR_MACHINE || cc.collectorMachine || '培育钻石').trim(),
@@ -78,9 +92,9 @@ function hashPrefix(hash) {
   return String(hash || '').slice(0, 8);
 }
 
-function shopResultSummary(collected, uploadResult) {
+function shopResultSummary(collected, uploadResult, options = {}) {
   const hash = collected?.cookieHash || '';
-  return {
+  const summary = {
     shopName: collected?.shopName || '',
     ok: Boolean(uploadResult?.ok),
     hash8: hashPrefix(hash),
@@ -94,6 +108,10 @@ function shopResultSummary(collected, uploadResult) {
         : '已上传'
       : uploadResult?.error || uploadResult?.reason || '采集失败',
   };
+  if (options.includeCookie && collected?.cookie) {
+    summary.cookie = collected.cookie;
+  }
+  return summary;
 }
 
 function isFailureCooling(shopKey) {
@@ -309,12 +327,36 @@ function shouldUploadCookie(stateEntry, collected, options = {}) {
   return { upload: false, reason: 'unchanged' };
 }
 
-async function uploadCookieToControlCenter(collected) {
+async function uploadCookieToLocalControl(collected) {
   const cc = getControlConfig();
-  if (!cc.enabled) {
-    return { ok: false, skipped: true, reason: 'control_center_disabled' };
+  if (!cc.localEnabled) {
+    return { ok: false, skipped: true, reason: 'local_control_disabled' };
   }
+  const url = `${cc.localServerUrl}/api/local-cookies/upload`;
+  const body = {
+    platform: 'qianfan',
+    shopName: collected.shopName,
+    cookie: collected.cookie,
+    cookieHash: collected.cookieHash,
+    source: collected.source || 'qianfan-relay-cdp',
+  };
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, status: res.status, error: data.error || `HTTP ${res.status}` };
+  }
+  return { ok: true, data, target: 'local' };
+}
 
+async function uploadCookieToCloudControl(collected) {
+  const cc = getControlConfig();
+  if (!cc.serviceToken) {
+    return { ok: false, skipped: true, reason: 'cloud_control_disabled' };
+  }
   const url = `${cc.serverUrl}/api/secrets/qianfan/upload-cookie`;
   const body = {
     platform: 'qianfan',
@@ -329,7 +371,6 @@ async function uploadCookieToControlCenter(collected) {
     lastSeenUrl: collected.lastSeenUrl,
     capturedAt: collected.capturedAt,
   };
-
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -343,7 +384,22 @@ async function uploadCookieToControlCenter(collected) {
   if (!res.ok) {
     return { ok: false, status: res.status, error: data.error || `HTTP ${res.status}` };
   }
-  return { ok: true, data };
+  return { ok: true, data, target: 'cloud' };
+}
+
+async function uploadCookieToControlCenter(collected) {
+  const cc = getControlConfig();
+  if (!cc.enabled) {
+    return { ok: false, skipped: true, reason: 'control_center_disabled' };
+  }
+  if (cc.localEnabled) {
+    const localResult = await uploadCookieToLocalControl(collected);
+    if (localResult.ok) return localResult;
+  }
+  if (cc.serviceToken) {
+    return uploadCookieToCloudControl(collected);
+  }
+  return { ok: false, skipped: true, reason: 'no_upload_target' };
 }
 
 function handleCookieUploadResult(result, state, shopKey, collected) {
@@ -546,11 +602,11 @@ async function runSyncNowAll(reason = 'manual') {
       success += 1;
       clearFailure(shopKey);
       lastAutoSyncAt = new Date().toISOString();
-      shops.push(shopResultSummary(collected, result));
+      shops.push(shopResultSummary(collected, result, { includeCookie: true }));
     } else {
       failed += 1;
       noteFailure(shopKey);
-      shops.push(shopResultSummary(collected, result));
+      shops.push(shopResultSummary(collected, result, { includeCookie: true }));
     }
   }
 

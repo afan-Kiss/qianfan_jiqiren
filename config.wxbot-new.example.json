@@ -20,12 +20,16 @@
     "sendOnlyBuyerNick": "饭饭"
   },
   "controlCenter": {
-    "enabled": true,
+    "enabled": false,
     "serverUrl": "http://8.137.126.18/control",
     "serviceToken": "",
     "collectorMachine": "培育钻石",
     "collectorProject": "千帆中转机器人",
     "uploadIntervalMinutes": 10,
     "localApiPort": 9323
+  },
+  "localControlCenter": {
+    "enabled": true,
+    "serverUrl": "http://127.0.0.1:4793"
   }
 }
