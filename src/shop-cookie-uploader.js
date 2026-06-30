@@ -230,8 +230,8 @@ const READ_ONLY_COOKIE_COLLECT_OPTIONS = {
   readOnly: true,
   allowPageMutation: false,
   retryReload: false,
-  probeArk: true,
   logDiagnostics: false,
+  networkHeaderWaitMs: 3000,
 };
 
 function isXhsWorkbenchUrl(url) {

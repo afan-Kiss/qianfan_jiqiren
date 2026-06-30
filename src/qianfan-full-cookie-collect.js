@@ -1,9 +1,8 @@
 /**
- * 千帆四店完整 Cookie 采集（Browser CDP + Page CDP 全量 + 多 URL 合并，确保含 a1）
+ * 千帆四店 Cookie 采集：优先 CDP Network 请求头 Cookie，只读合并上传
  */
 const CDP = require('chrome-remote-interface');
 const { normalizeCookie, hashCookie } = require('./qianfan-cookie-collector');
-const { fetchDevToolsVersion } = require('./devtools-list');
 const config = require('./wechat/wxbot-new-config');
 const { println } = require('./utils');
 
@@ -24,43 +23,21 @@ const CRITICAL_COOKIE_NAMES = new Set([
 const ARK_TOKEN_KEY = 'access-token-ark.xiaohongshu.com';
 const WALLE_TOKEN_KEY = 'access-token-walle.xiaohongshu.com';
 
-const XHS_COOKIE_URLS = [
-  'https://www.xiaohongshu.com',
-  'https://edith.xiaohongshu.com',
-  'https://walle.xiaohongshu.com',
-  'https://ark.xiaohongshu.com',
-  'https://customer.xiaohongshu.com',
-  'https://pro.xiaohongshu.com',
-  'https://seller.xiaohongshu.com',
-  'https://fe.xiaohongshu.com',
-  'https://zhaoshang.xiaohongshu.com',
-  'https://ark.xiaohongshu.com/app-order/order/query',
-  'https://ark.xiaohongshu.com/app-seller/seller/home',
-  'https://ark.xiaohongshu.com/app-review/review-manage',
-];
-
-const ARK_PROBE_FETCH_URLS = [
-  'https://ark.xiaohongshu.com/api/edith/home/get_shop_score',
-  'https://ark.xiaohongshu.com/api/edith/order/query/query_list?page=1&pageSize=1',
-];
-
-const ARK_PROBE_PAGE_URLS = [
-  'https://ark.xiaohongshu.com/app-order/order/query',
-  'https://ark.xiaohongshu.com/app-seller/seller/home',
-];
-
-const ARK_REQUEST_URL_HINTS = [
-  'ark.xiaohongshu.com',
-  '/api/ark/',
-  '/api/edith/',
-  '/api/order',
-  '/app-order/',
-  'app-seller',
-];
+const DEFAULT_NETWORK_HEADER_WAIT_MS = 3000;
 
 function isXhsRelatedDomain(domain) {
   const d = String(domain || '').toLowerCase();
   return d.includes('xiaohongshu.com') || d.includes('xiaohongshu.net');
+}
+
+function isXhsRelatedRequestUrl(url) {
+  const u = String(url || '').toLowerCase();
+  return (
+    u.includes('xiaohongshu.com') ||
+    u.includes('xiaohongshu.net') ||
+    u.includes('impaas') ||
+    u.includes('qianfan')
+  );
 }
 
 function cookieContainsA1(cookieStr) {
@@ -99,7 +76,14 @@ function extractCookieValueByName(cookieStr, name) {
 
 function isArkRelatedRequestUrl(url) {
   const u = String(url || '').toLowerCase();
-  return ARK_REQUEST_URL_HINTS.some((hint) => u.includes(hint));
+  return (
+    u.includes('ark.xiaohongshu.com') ||
+    u.includes('/api/ark/') ||
+    u.includes('/api/edith/') ||
+    u.includes('/api/order') ||
+    u.includes('/app-order/') ||
+    u.includes('app-seller')
+  );
 }
 
 function extractCookieKeys(cookieStr) {
@@ -176,12 +160,70 @@ function mergeCdpCookieEntries(list) {
   };
 }
 
-async function ensureNetworkEnabled(client) {
-  if (!client?.Network?.enable) return;
-  try {
-    await client.Network.enable({});
-  } catch {
-    // already enabled
+function parseSetCookieHeader(setCookieRaw) {
+  const parts = [];
+  const text = String(setCookieRaw || '');
+  if (!text) return parts;
+  for (const seg of text.split(/\n|,(?=[^;]+?=)/)) {
+    const piece = seg.trim();
+    if (!piece) continue;
+    const eq = piece.indexOf('=');
+    if (eq <= 0) continue;
+    const name = piece.slice(0, eq).trim();
+    const value = piece.slice(eq + 1).split(';')[0].trim();
+    if (name && value) parts.push(`${name}=${value}`);
+  }
+  return parts;
+}
+
+function extractCookieHeaderFromHeaders(headers) {
+  if (!headers || typeof headers !== 'object') return '';
+  return String(headers.Cookie || headers.cookie || '').trim();
+}
+
+function associatedCookiesToHeader(associatedCookies) {
+  if (!Array.isArray(associatedCookies)) return '';
+  const parts = [];
+  for (const row of associatedCookies) {
+    const c = row?.cookie || row;
+    const name = String(c?.name || '').trim();
+    const value = String(c?.value ?? '').trim();
+    if (name) parts.push(`${name}=${value}`);
+  }
+  return normalizeCookie(parts.join('; '));
+}
+
+function extractSetCookieHeaderParts(headers) {
+  if (!headers || typeof headers !== 'object') return '';
+  const pairs = [];
+  for (const [key, value] of Object.entries(headers)) {
+    if (String(key).toLowerCase() !== 'set-cookie') continue;
+    pairs.push(...parseSetCookieHeader(value));
+  }
+  return normalizeCookie(pairs.join('; '));
+}
+
+async function ensureCdpDomainsEnabled(client) {
+  if (client?.Network?.enable) {
+    try {
+      await client.Network.enable({});
+    } catch {
+      // already enabled
+    }
+  }
+  if (client?.Page?.enable) {
+    try {
+      await client.Page.enable();
+    } catch {
+      // ignore
+    }
+  }
+  if (client?.Runtime?.enable) {
+    try {
+      await client.Runtime.enable();
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -198,101 +240,212 @@ async function getPageTargetMeta(client) {
   return meta;
 }
 
-async function readPageCdpCookies(client, pageUrl) {
-  const sources = {
-    getAllCookies: { count: 0, keys: [], cookie: '' },
-    getCookiesByUrl: { count: 0, keys: [], cookie: '' },
-  };
-  const rawLists = [];
-  await ensureNetworkEnabled(client);
+function mergeBridgeNetworkHeaderCookies(bridge) {
+  if (!bridge) return '';
+  return mergeCookiePartsPreferLongest(
+    bridge.mergedNetworkHeaderCookie,
+    bridge.lastArkRequestCookie,
+    bridge.lastOrderRequestCookie,
+    bridge.lastWalleRequestCookie,
+    bridge.lastRequestCookie
+  );
+}
 
-  if (client.Network?.getAllCookies) {
+function shouldCollectNetworkCookie(url, cookieStr, associatedCookies) {
+  if (isXhsRelatedRequestUrl(url)) return true;
+  const cookie = String(cookieStr || '').trim();
+  if (cookie && (cookieContainsA1(cookie) || cookieContainsArkToken(cookie) || cookieContainsWalleToken(cookie))) {
+    return true;
+  }
+  if (!Array.isArray(associatedCookies)) return false;
+  for (const row of associatedCookies) {
+    const domain = String(row?.cookie?.domain || '').toLowerCase();
+    if (isXhsRelatedDomain(domain)) return true;
+    const name = String(row?.cookie?.name || '').trim();
+    if (CRITICAL_COOKIE_NAMES.has(name)) return true;
+  }
+  return false;
+}
+
+function createNetworkHeaderCookieCollector(client) {
+  const buckets = {
+    requestWillBeSent: [],
+    requestWillBeSentExtraInfo: [],
+    responseReceivedExtraInfo: [],
+  };
+  const requestUrlById = new Map();
+  let matchedRequestCount = 0;
+
+  const pushChunk = (bucket, cookieStr, url, associatedCookies) => {
+    const cookie = String(cookieStr || '').trim();
+    if (!cookie || !shouldCollectNetworkCookie(url, cookie, associatedCookies)) return;
+    buckets[bucket].push(cookie);
+    matchedRequestCount += 1;
+  };
+
+  const onRequestWillBeSent = (params) => {
+    const requestId = String(params?.requestId || '').trim();
+    const url = String(params?.request?.url || '');
+    if (requestId && url) requestUrlById.set(requestId, url);
+    const cookie = extractCookieHeaderFromHeaders(params?.request?.headers);
+    pushChunk('requestWillBeSent', cookie, url);
+  };
+
+  const onRequestWillBeSentExtraInfo = (params) => {
+    const requestId = String(params?.requestId || '').trim();
+    const url = requestUrlById.get(requestId) || '';
+    const associatedCookies = params?.associatedCookies;
+    const cookie = extractCookieHeaderFromHeaders(params?.headers);
+    pushChunk('requestWillBeSentExtraInfo', cookie, url, associatedCookies);
+    const assoc = associatedCookiesToHeader(associatedCookies);
+    pushChunk('requestWillBeSentExtraInfo', assoc, url, associatedCookies);
+  };
+
+  const onResponseReceivedExtraInfo = (params) => {
+    const requestId = String(params?.requestId || '').trim();
+    const url = String(params?.url || requestUrlById.get(requestId) || '');
+    const setCookie = extractSetCookieHeaderParts(params?.headers);
+    pushChunk('responseReceivedExtraInfo', setCookie, url);
+  };
+
+  let attached = false;
+
+  async function enable() {
+    await ensureCdpDomainsEnabled(client);
+    if (attached) return;
+    attached = true;
     try {
-      const all = await client.Network.getAllCookies();
-      const list = all?.cookies || [];
-      sources.getAllCookies.count = list.length;
-      const merged = mergeCdpCookieEntries(list);
-      sources.getAllCookies.keys = extractCookieKeys(merged.cookie);
-      sources.getAllCookies.cookie = merged.cookie;
-      if (list.length) rawLists.push(list);
+      client.Network.requestWillBeSent(onRequestWillBeSent);
+    } catch {
+      // ignore
+    }
+    try {
+      if (client.Network.requestWillBeSentExtraInfo) {
+        client.Network.requestWillBeSentExtraInfo(onRequestWillBeSentExtraInfo);
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      if (client.Network.responseReceivedExtraInfo) {
+        client.Network.responseReceivedExtraInfo(onResponseReceivedExtraInfo);
+      }
     } catch {
       // ignore
     }
   }
 
-  const urls = new Set(XHS_COOKIE_URLS);
-  if (pageUrl) urls.add(String(pageUrl).split('#')[0]);
-  const perUrlLists = [];
-  if (client.Network?.getCookies) {
-    for (const url of urls) {
-      try {
-        const one = await client.Network.getCookies({ urls: [url] });
-        const list = one?.cookies || [];
-        if (list.length) perUrlLists.push(list);
-      } catch {
-        // ignore per-url
-      }
-    }
-  }
-  if (perUrlLists.length) {
-    const flat = perUrlLists.flat();
-    sources.getCookiesByUrl.count = flat.length;
-    const merged = mergeCdpCookieEntries(flat);
-    sources.getCookiesByUrl.keys = extractCookieKeys(merged.cookie);
-    sources.getCookiesByUrl.cookie = merged.cookie;
-    rawLists.push(flat);
+  function mergeAll() {
+    return mergeCookiePartsPreferLongest(
+      ...buckets.requestWillBeSent,
+      ...buckets.requestWillBeSentExtraInfo,
+      ...buckets.responseReceivedExtraInfo
+    );
   }
 
-  const merged = mergeCdpCookieEntries(rawLists.flat());
-  return { cookie: merged.cookie, a1Meta: merged.a1Meta, sources };
+  function stats() {
+    return {
+      matchedRequestCount,
+      requestWillBeSent: buckets.requestWillBeSent.length,
+      requestWillBeSentExtraInfo: buckets.requestWillBeSentExtraInfo.length,
+      responseReceivedExtraInfo: buckets.responseReceivedExtraInfo.length,
+    };
+  }
+
+  async function waitCollect(waitMs = DEFAULT_NETWORK_HEADER_WAIT_MS) {
+    await sleep(waitMs);
+    return { cookie: mergeAll(), stats: stats() };
+  }
+
+  return { enable, waitCollect, mergeNow: mergeAll, stats };
 }
 
-async function readBrowserStorageCookies(browserContextId) {
-  const qd = config.qianfanDebug || {};
-  const port = qd.devtoolsPort || 9322;
-  const host = qd.devtoolsHost || '127.0.0.1';
-  const version = await fetchDevToolsVersion(port, host).catch(() => null);
-  const browserWs = version?.webSocketDebuggerUrl;
-  if (!browserWs) return { count: 0, keys: [], cookie: '', a1Meta: null };
+function ensureBridgeNetworkHeaderListeners(client, bridge) {
+  if (!client?.Network || !bridge || bridge._networkHeaderListenersAttached) return;
+  bridge._networkHeaderListenersAttached = true;
+  const requestUrlById = new Map();
+  const { noteBridgeRequestCookie } = require('./qianfan-cookie-collector');
 
-  let browserClient;
+  const ingest = (cookieStr, url, associatedCookies) => {
+    const merged = mergeCookiePartsPreferLongest(
+      String(cookieStr || '').trim(),
+      associatedCookiesToHeader(associatedCookies)
+    );
+    if (!merged || !shouldCollectNetworkCookie(url, merged, associatedCookies)) return;
+    noteBridgeRequestCookie(bridge, merged, url);
+  };
+
+  void ensureCdpDomainsEnabled(client);
+
   try {
-    browserClient = await CDP({ target: browserWs });
-    const params = browserContextId ? { browserContextId } : {};
-    const result = await browserClient.Storage.getCookies(params);
-    const list = result?.cookies || [];
-    const merged = mergeCdpCookieEntries(list);
-    return {
-      count: list.length,
-      keys: extractCookieKeys(merged.cookie),
-      cookie: merged.cookie,
-      a1Meta: merged.a1Meta,
-      browserWs: browserWs.slice(0, 60),
-    };
+    client.Network.requestWillBeSent((params) => {
+      const requestId = String(params?.requestId || '').trim();
+      const url = String(params?.request?.url || '');
+      if (requestId && url) requestUrlById.set(requestId, url);
+      ingest(extractCookieHeaderFromHeaders(params?.request?.headers), url);
+    });
   } catch {
-    return { count: 0, keys: [], cookie: '', a1Meta: null };
-  } finally {
-    if (browserClient) {
+    // ignore
+  }
+  try {
+    if (client.Network.requestWillBeSentExtraInfo) {
+      client.Network.requestWillBeSentExtraInfo((params) => {
+        const url = requestUrlById.get(String(params?.requestId || '').trim()) || '';
+        ingest(extractCookieHeaderFromHeaders(params?.headers), url, params?.associatedCookies);
+      });
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    if (client.Network.responseReceivedExtraInfo) {
+      client.Network.responseReceivedExtraInfo((params) => {
+        const requestId = String(params?.requestId || '').trim();
+        const url = String(params?.url || requestUrlById.get(requestId) || '');
+        ingest(extractSetCookieHeaderParts(params?.headers), url);
+      });
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const JAR_FALLBACK_URLS = [
+  'https://walle.xiaohongshu.com',
+  'https://ark.xiaohongshu.com',
+  'https://edith.xiaohongshu.com',
+  'https://pro.xiaohongshu.com',
+  'https://seller.xiaohongshu.com',
+  'https://customer.xiaohongshu.com',
+];
+
+async function readJarCookiesFallback(client, pageUrl) {
+  if (!client?.Network?.getAllCookies) return { cookie: '', a1Meta: null, count: 0 };
+  await ensureCdpDomainsEnabled(client);
+  const mergedLists = [];
+  try {
+    const all = await client.Network.getAllCookies();
+    if (Array.isArray(all?.cookies)) mergedLists.push(...all.cookies);
+  } catch {
+    // ignore
+  }
+  if (client.Network.getCookies) {
+    const urls = [...new Set([pageUrl, ...JAR_FALLBACK_URLS].filter(Boolean))];
+    for (const url of urls) {
       try {
-        await browserClient.close();
+        const scoped = await client.Network.getCookies({ urls: [url] });
+        if (Array.isArray(scoped?.cookies)) mergedLists.push(...scoped.cookies);
       } catch {
         // ignore
       }
     }
   }
-}
-
-async function readPageDocumentCookie(client) {
-  if (!client?.Runtime?.evaluate) return '';
-  try {
-    const evalRes = await client.Runtime.evaluate({
-      expression: 'document.cookie || ""',
-      returnByValue: true,
-    });
-    return normalizeCookie(evalRes?.result?.value || '');
-  } catch {
-    return '';
-  }
+  const merged = mergeCdpCookieEntries(mergedLists);
+  return {
+    cookie: merged.cookie,
+    a1Meta: merged.a1Meta,
+    count: mergedLists.length,
+  };
 }
 
 function buildSourceDiag(label, cookieStr, extra = {}) {
@@ -310,152 +463,16 @@ function buildSourceDiag(label, cookieStr, extra = {}) {
   };
 }
 
-function parseSetCookieHeader(setCookieRaw) {
-  const parts = [];
-  const text = String(setCookieRaw || '');
-  if (!text) return parts;
-  for (const seg of text.split(/\n|,(?=[^;]+?=)/)) {
-    const piece = seg.trim();
-    if (!piece) continue;
-    const eq = piece.indexOf('=');
-    if (eq <= 0) continue;
-    const name = piece.slice(0, eq).trim();
-    const value = piece.slice(eq + 1).split(';')[0].trim();
-    if (name && value) parts.push(`${name}=${value}`);
-  }
-  return parts;
-}
-
-function attachNetworkCookieSniffer(client) {
-  const buckets = { ark: [], walle: [], order: [], any: [] };
-  const pushCookieText = (cookie, url) => {
-    if (!cookie) return;
-    buckets.any.push(cookie);
-    if (isArkRelatedRequestUrl(url) || cookieContainsArkToken(cookie)) buckets.ark.push(cookie);
-    else if (String(url).includes('walle.xiaohongshu.com') || cookieContainsWalleToken(cookie)) buckets.walle.push(cookie);
-    else if (/\/api\/(order|ark|edith)/i.test(String(url))) buckets.order.push(cookie);
-  };
-  const onRequest = (params) => {
-    const url = String(params?.request?.url || '');
-    const cookie = String(params?.request?.headers?.Cookie || params?.request?.headers?.cookie || '').trim();
-    pushCookieText(cookie, url);
-  };
-  const onExtra = (params) => {
-    const url = String(params?.request?.url || params?.url || '');
-    const cookie = String(params?.headers?.Cookie || params?.headers?.cookie || '').trim();
-    pushCookieText(cookie, url);
-  };
-  const onResponse = (params) => {
-    const url = String(params?.response?.url || '');
-    if (!isArkRelatedRequestUrl(url) && !/\/api\/(order|ark|edith)/i.test(url)) return;
-    const headers = params?.response?.headers || {};
-    for (const [key, value] of Object.entries(headers)) {
-      if (String(key).toLowerCase() !== 'set-cookie') continue;
-      const pairs = parseSetCookieHeader(value);
-      if (pairs.length) pushCookieText(pairs.join('; '), url);
-    }
-  };
-  try {
-    client.Network.requestWillBeSent(onRequest);
-  } catch {
-    // ignore
-  }
-  try {
-    if (client.Network.requestWillBeSentExtraInfo) {
-      client.Network.requestWillBeSentExtraInfo(onExtra);
-    }
-  } catch {
-    // ignore
-  }
-  try {
-    client.Network.responseReceived(onResponse);
-  } catch {
-    // ignore
-  }
-  return {
-    mergeSniffed() {
-      return mergeCookiePartsPreferLongest(...buckets.ark, ...buckets.walle, ...buckets.order, ...buckets.any);
-    },
-    stats() {
-      return {
-        arkRequests: buckets.ark.length,
-        walleRequests: buckets.walle.length,
-        orderRequests: buckets.order.length,
-        anyRequests: buckets.any.length,
-      };
-    },
-  };
-}
-
-async function probeArkTokenViaPage(client, pageUrl, options = {}) {
-  const readOnly = options.readOnly !== false;
-  const allowPageMutation = options.allowPageMutation === true && !readOnly;
-  const chunks = [];
-  await ensureNetworkEnabled(client);
-
-  if (client.Runtime?.evaluate) {
-    const fetchUrls = ARK_PROBE_FETCH_URLS.map((u) => JSON.stringify(u)).join(',');
-    try {
-      await client.Runtime.evaluate({
-        expression: `(async()=>{ const urls=[${fetchUrls}]; for (const u of urls){ try{ await fetch(u,{credentials:'include',mode:'cors',headers:{accept:'application/json, text/plain, */*',referer:'https://ark.xiaohongshu.com/app-order/order/query'}});}catch(e){} await new Promise(r=>setTimeout(r,400)); } return true; })()`,
-        awaitPromise: true,
-        returnByValue: true,
-      });
-      await sleep(2500);
-      const afterFetch = await readPageCdpCookies(client, pageUrl);
-      if (afterFetch.cookie) chunks.push(afterFetch.cookie);
-    } catch {
-      // ignore fetch probe
-    }
-  }
-
-  if (!chunks.some(cookieContainsArkToken)) {
-    if (!allowPageMutation) {
-      println(
-        '[Cookie采集] readOnly=true，缺 access-token-ark 时不跳转 ark 页面；请用户手动打开订单/数据页面后重试'
-      );
-      return mergeCookiePartsPreferLongest(...chunks);
-    }
-
-    if (client.Page?.navigate) {
-      const origin = String(pageUrl || '').split('#')[0];
-      for (const arkUrl of ARK_PROBE_PAGE_URLS) {
-        try {
-          println(`[Cookie采集] 尝试打开 ark 页面以获取 access-token-ark：${arkUrl}`);
-          await client.Page.navigate({ url: arkUrl });
-          await sleep(3500);
-          const afterNav = await readPageCdpCookies(client, arkUrl);
-          if (afterNav.cookie) chunks.push(afterNav.cookie);
-          if (cookieContainsArkToken(afterNav.cookie)) break;
-        } catch {
-          // ignore per-url
-        }
-      }
-      if (origin) {
-        try {
-          await client.Page.navigate({ url: origin });
-          await sleep(800);
-        } catch {
-          // ignore restore
-        }
-      }
-    }
-  }
-
-  return mergeCookiePartsPreferLongest(...chunks);
-}
-
 function logCookieDiagnostics(shopName, diag) {
   println(`[Cookie诊断] ${shopName}`);
   if (diag.pageTitle) println(`[Cookie诊断] pageTitle=${diag.pageTitle}`);
   if (diag.url) println(`[Cookie诊断] url=${diag.url}`);
   if (diag.targetId) println(`[Cookie诊断] targetId=${diag.targetId}`);
   if (diag.browserContextId) println(`[Cookie诊断] browserContextId=${diag.browserContextId}`);
-  if (diag.sessionPartition) println(`[Cookie诊断] session/partition=${diag.sessionPartition}`);
 
   for (const src of diag.sources || []) {
     println(
-      `[Cookie诊断] ${src.label} count=${src.count} length=${src.length} containsA1=${src.containsA1} keys=${src.keys.join(',') || '(none)'}`
+      `[Cookie诊断] ${src.label} count=${src.count ?? src.matchedRequestCount ?? 0} length=${src.length} containsA1=${src.containsA1} containsArkToken=${src.containsArkToken} keys=${src.keys.join(',') || '(none)'}`
     );
   }
 
@@ -468,14 +485,9 @@ function logCookieDiagnostics(shopName, diag) {
   println(
     `[Cookie诊断] merged count=${diag.mergedCount} length=${diag.mergedLength} containsA1=${diag.containsA1} containsArkToken=${diag.containsArkToken} containsWalleToken=${diag.containsWalleToken}`
   );
-  if (diag.a1Meta) {
+  if (diag.networkHeaderStats) {
     println(
-      `[Cookie诊断] a1 meta domain=${diag.a1Meta.domain} path=${diag.a1Meta.path} httpOnly=${diag.a1Meta.httpOnly} secure=${diag.a1Meta.secure} sameSite=${diag.a1Meta.sameSite || '-'}`
-    );
-  }
-  if (diag.networkSniff) {
-    println(
-      `[Cookie诊断] networkSniff ark=${diag.networkSniff.arkRequests || 0} walle=${diag.networkSniff.walleRequests || 0} order=${diag.networkSniff.orderRequests || 0}`
+      `[Cookie诊断] networkHeaderStats matched=${diag.networkHeaderStats.matchedRequestCount || 0} willBeSent=${diag.networkHeaderStats.requestWillBeSent || 0} extraInfo=${diag.networkHeaderStats.requestWillBeSentExtraInfo || 0} responseExtra=${diag.networkHeaderStats.responseReceivedExtraInfo || 0}`
     );
   }
   if (diag.payloadContainsA1 != null) {
@@ -485,18 +497,10 @@ function logCookieDiagnostics(shopName, diag) {
     println(`[Cookie诊断] payload cookie containsArkToken=${diag.payloadContainsArkToken}`);
   }
   if (!diag.containsA1) {
-    println(
-      `[Cookie诊断] ${shopName} 缺少 a1，当前 CDP 页面没有读到完整小红书登录 Cookie`
-    );
-    println(
-      `[Cookie诊断] 提示：请在同一个 Chrome 窗口打开 https://www.xiaohongshu.com 确认已登录，再打开对应商家后台/千帆页面后重新提交`
-    );
+    println(`[Cookie诊断] ${shopName} 缺少 a1，未从 Network 请求头/CDP 合并到完整 Cookie`);
   } else if (!diag.containsArkToken) {
     println(
-      `[Cookie诊断] ${shopName} 缺少 access-token-ark.xiaohongshu.com，请打开该店商家后台「订单/数据/经营」页面后重新提交 Cookie`
-    );
-    println(
-      `[Cookie诊断] 建议：在千帆工作台点击「订单管理」或打开 https://ark.xiaohongshu.com/app-order/order/query 后再提交`
+      `[Cookie诊断] ${shopName} 缺少 access-token-ark，请在该店千帆产生订单/ark 请求后再提交（本次只读采集，不跳页面）`
     );
   }
 }
@@ -504,103 +508,49 @@ function logCookieDiagnostics(shopName, diag) {
 async function collectFullCookiesFromBridge(bridge, options = {}) {
   if (!bridge?.client) return null;
   const readOnly = options.readOnly !== false;
-  const allowPageMutation = options.allowPageMutation === true && !readOnly;
   const client = bridge.client;
   const pageUrl = String(bridge.pageInfo?.url || bridge.lastSeenUrl || 'https://walle.xiaohongshu.com').trim();
   const pageTitle = String(bridge.pageInfo?.pageTitle || bridge.pageInfo?.title || bridge.shopTitle || '').trim();
-  const headerCookie = normalizeCookie(bridge.lastRequestCookie || '');
-  const arkHeaderCookie = normalizeCookie(bridge.lastArkRequestCookie || bridge.lastOrderRequestCookie || '');
-  const walleHeaderCookie = normalizeCookie(bridge.lastWalleRequestCookie || '');
   const targetMeta = await getPageTargetMeta(client);
-  const sniffer = attachNetworkCookieSniffer(client);
+  const waitMs = Number(options.networkHeaderWaitMs ?? DEFAULT_NETWORK_HEADER_WAIT_MS);
 
-  let pageCdp = await readPageCdpCookies(client, pageUrl);
-  let browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
-  let pageCookies = await readPageDocumentCookie(client);
-  let probeCookie = '';
+  const bridgeHeaders = mergeBridgeNetworkHeaderCookies(bridge);
+  ensureBridgeNetworkHeaderListeners(client, bridge);
+  const collector = createNetworkHeaderCookieCollector(client);
+  await collector.enable();
 
-  const missingA1 =
-    !cookieContainsA1(pageCdp.cookie) && !cookieContainsA1(browserStorage.cookie);
-  if (missingA1 && options.retryReload !== false) {
-    if (allowPageMutation && client.Page?.reload) {
-      try {
-        println(`[Cookie采集] ${bridge.shopTitle || '店铺'} 缺少 a1，尝试刷新页面后重采…`);
-        await client.Page.reload({ ignoreCache: false });
-        await sleep(3000);
-        pageCdp = await readPageCdpCookies(client, pageUrl);
-        browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
-        pageCookies = await readPageDocumentCookie(client);
-      } catch {
-        // ignore reload errors
-      }
-    } else {
-      println('[Cookie采集] readOnly=true，跳过页面刷新，只读取现有 Cookie');
-    }
+  if (readOnly) {
+    println(`[Cookie采集] readOnly=true，监听 Network 请求头 Cookie ${waitMs}ms（不刷新/不跳转页面）`);
   }
 
-  let mergedSoFar = mergeCookiePartsPreferLongest(
-    pageCdp.cookie,
-    browserStorage.cookie,
-    pageCookies,
-    headerCookie,
-    arkHeaderCookie,
-    walleHeaderCookie,
-    sniffer.mergeSniffed()
-  );
+  const waited = await collector.waitCollect(waitMs);
+  const liveHeaders = waited.cookie;
+  const networkHeaderStats = waited.stats;
 
-  if (cookieContainsA1(mergedSoFar) && !cookieContainsArkToken(mergedSoFar) && options.probeArk !== false) {
-    probeCookie = await probeArkTokenViaPage(client, pageUrl, { readOnly, allowPageMutation });
-    await sleep(1000);
-    pageCdp = await readPageCdpCookies(client, pageUrl);
-    browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
+  let jarFallback = { cookie: '', a1Meta: null, count: 0 };
+  if (options.includeJarFallback !== false) {
+    jarFallback = await readJarCookiesFallback(client, pageUrl);
   }
 
-  const sniffedAfter = sniffer.mergeSniffed();
-  const beforeParts = [
-    pageCdp.cookie,
-    browserStorage.cookie,
-    pageCookies,
-    headerCookie,
-    arkHeaderCookie,
-    walleHeaderCookie,
-    sniffedAfter,
-    probeCookie,
-  ].filter(Boolean);
+  const beforeParts = [bridgeHeaders, liveHeaders, jarFallback.cookie].filter(Boolean);
   const beforeMergeKeys = [...new Set(beforeParts.flatMap((p) => extractCookieKeys(p)))].sort();
-
   const cookie = mergeCookiePartsPreferLongest(...beforeParts);
   const afterMergeKeys = extractCookieKeys(cookie);
   const hasA1 = cookieContainsA1(cookie);
   const hasArk = cookieContainsArkToken(cookie);
   const hasWalle = cookieContainsWalleToken(cookie);
-  const a1Meta = pageCdp.a1Meta || browserStorage.a1Meta || null;
-  const networkSniff = sniffer.stats();
 
   const diagnostics = {
     shopName: bridge.shopTitle || '',
     pageTitle,
     url: pageUrl,
     readOnly,
-    allowPageMutation,
     targetId: targetMeta.targetId || bridge.pageInfo?.targetId || '',
     browserContextId: targetMeta.browserContextId || '',
-    sessionPartition: bridge.pageInfo?.sessionPartition || '',
     sources: [
-      buildSourceDiag('getAllCookies', pageCdp.sources.getAllCookies.cookie, {
-        count: pageCdp.sources.getAllCookies.count,
-      }),
-      buildSourceDiag('getCookies(multi-url)', pageCdp.sources.getCookiesByUrl.cookie, {
-        count: pageCdp.sources.getCookiesByUrl.count,
-      }),
-      buildSourceDiag('Storage.getCookies(browser)', browserStorage.cookie, {
-        count: browserStorage.count,
-      }),
-      buildSourceDiag('lastRequestCookie', headerCookie),
-      buildSourceDiag('lastArkRequestCookie', arkHeaderCookie),
-      buildSourceDiag('lastWalleRequestCookie', walleHeaderCookie),
-      buildSourceDiag('networkSniff', sniffedAfter, networkSniff),
-      buildSourceDiag('arkProbe', probeCookie),
-      buildSourceDiag('document.cookie(ref)', pageCookies),
+      buildSourceDiag('bridge.networkHeaders', bridgeHeaders),
+      buildSourceDiag('network.headersMerged', liveHeaders, networkHeaderStats),
+      buildSourceDiag('jar.getAllCookies(fallback)', jarFallback.cookie, { count: jarFallback.count }),
     ],
     beforeMergeKeys,
     afterMergeKeys,
@@ -609,8 +559,8 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
     containsA1: hasA1,
     containsArkToken: hasArk,
     containsWalleToken: hasWalle,
-    networkSniff,
-    a1Meta,
+    networkHeaderStats,
+    a1Meta: jarFallback.a1Meta,
   };
 
   if (options.logDiagnostics !== false) {
@@ -631,12 +581,9 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
     browserContextId: diagnostics.browserContextId,
     diagnostics,
     sources: {
-      cdpLength: pageCdp.cookie.length,
-      browserLength: browserStorage.cookie.length,
-      pageLength: pageCookies.length,
-      headerLength: headerCookie.length,
-      arkHeaderLength: arkHeaderCookie.length,
-      probeLength: probeCookie.length,
+      bridgeHeaderLength: bridgeHeaders.length,
+      liveHeaderLength: liveHeaders.length,
+      jarFallbackLength: jarFallback.cookie.length,
     },
   };
 }
@@ -654,9 +601,6 @@ function logCookieCollectionDiagnostics(shopName, detail) {
   println(
     `[Cookie采集] ${shopName} 读取 Cookie 数量：${detail.cookieKeyCount}，长度：${detail.cookie?.length || 0}，包含 a1：${detail.hasA1}`
   );
-  if (detail.cookieKeys?.length) {
-    println(`[Cookie采集] ${shopName} Cookie keys：${detail.cookieKeys.join(', ')}`);
-  }
 }
 
 function sleep(ms) {
@@ -667,8 +611,7 @@ module.exports = {
   ARK_TOKEN_KEY,
   WALLE_TOKEN_KEY,
   CRITICAL_COOKIE_NAMES,
-  XHS_COOKIE_URLS,
-  ARK_PROBE_PAGE_URLS,
+  DEFAULT_NETWORK_HEADER_WAIT_MS,
   cookieContainsA1,
   cookieContainsArkToken,
   cookieContainsWalleToken,
@@ -676,8 +619,12 @@ module.exports = {
   extractCookieKeys,
   mergeCookiePartsPreferLongest,
   mergeCdpCookieEntries,
+  mergeBridgeNetworkHeaderCookies,
+  isXhsRelatedRequestUrl,
+  isArkRelatedRequestUrl,
+  createNetworkHeaderCookieCollector,
+  ensureBridgeNetworkHeaderListeners,
   collectFullCookiesFromBridge,
   logCookieCollectionDiagnostics,
   logCookieDiagnostics,
-  isArkRelatedRequestUrl,
 };

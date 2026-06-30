@@ -6,25 +6,21 @@ const fullSrc = fs.readFileSync(path.join(__dirname, '../src/qianfan-full-cookie
 const uploaderSrc = fs.readFileSync(path.join(__dirname, '../src/shop-cookie-uploader.js'), 'utf8');
 
 assert(fullSrc.includes('const readOnly = options.readOnly !== false'), 'collectFullCookiesFromBridge must default readOnly=true');
-assert(fullSrc.includes('allowPageMutation'), 'collectFullCookiesFromBridge must use allowPageMutation guard');
+assert(fullSrc.includes('requestWillBeSentExtraInfo'), 'must listen requestWillBeSentExtraInfo for header cookies');
+assert(fullSrc.includes('responseReceivedExtraInfo'), 'must listen responseReceivedExtraInfo for set-cookie');
+assert(fullSrc.includes('associatedCookies'), 'must parse associatedCookies from extraInfo');
 assert(
-  fullSrc.includes('readOnly=true，跳过页面刷新'),
-  'missing a1 must log readOnly skip instead of reload by default'
+  fullSrc.includes('不刷新/不跳转页面'),
+  'readOnly collect must not reload or navigate pages'
 );
 assert(
-  fullSrc.includes('readOnly=true，缺 access-token-ark 时不跳转 ark 页面'),
-  'probeArkTokenViaPage must not navigate by default'
-);
-
-assert(
-  /if\s*\(\s*allowPageMutation[\s\S]{0,200}client\.Page\?\.reload/.test(fullSrc),
-  'Page.reload must be guarded by allowPageMutation'
+  fullSrc.includes('请在该店千帆产生订单/ark 请求后再提交'),
+  'missing ark must log readOnly guidance instead of navigating'
 );
 
-const navigateIdx = fullSrc.indexOf('await client.Page.navigate({ url: arkUrl })');
-assert(navigateIdx > 0, 'Page.navigate should exist only behind allowPageMutation');
-const navigateContext = fullSrc.slice(Math.max(0, navigateIdx - 500), navigateIdx + 100);
-assert(navigateContext.includes('allowPageMutation'), 'Page.navigate must be guarded by allowPageMutation');
+assert(!fullSrc.includes('Page.navigate'), 'must not navigate pages for cookie collection');
+assert(!fullSrc.includes('Page.reload'), 'must not reload pages for cookie collection');
+assert(!fullSrc.includes('document.cookie'), 'must not rely on document.cookie');
 
 assert(uploaderSrc.includes('READ_ONLY_COOKIE_COLLECT_OPTIONS'), 'shop uploader must define read-only collect options');
 assert(uploaderSrc.includes('readOnly: true'), 'collect must pass readOnly:true');

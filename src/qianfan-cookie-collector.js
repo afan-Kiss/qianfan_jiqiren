@@ -647,6 +647,12 @@ function scheduleCookieRefresh() {
 function onBridgeRegistered(bridge) {
   const shopTitle = bridge?.shopTitle;
   if (!shopTitle) return;
+  try {
+    const { ensureBridgeNetworkHeaderListeners } = require('./qianfan-full-cookie-collect');
+    ensureBridgeNetworkHeaderListeners(bridge.client, bridge);
+  } catch {
+    // ignore
+  }
   void triggerCookieCheck(shopTitle, 'bridge_registered');
 }
 
@@ -674,17 +680,23 @@ function noteBridgeRequestCookie(bridge, cookieHeader, requestUrl = '') {
   if (!raw || !bridge) return;
   const url = String(requestUrl || '').trim();
 
-  if (!bridge.lastRequestCookie || raw.length >= bridge.lastRequestCookie.length) {
-    bridge.lastRequestCookie = raw;
-    bridge.lastCookieCapturedAt = Date.now();
-  }
-
   const {
     cookieContainsArkToken,
     cookieContainsWalleToken,
     isArkRelatedRequestUrl,
     mergeCookiePartsPreferLongest,
   } = require('./qianfan-full-cookie-collect');
+
+  if (!bridge.lastRequestCookie || raw.length >= bridge.lastRequestCookie.length) {
+    bridge.lastRequestCookie = raw;
+    bridge.lastCookieCapturedAt = Date.now();
+  }
+
+  bridge.mergedNetworkHeaderCookie = mergeCookiePartsPreferLongest(
+    bridge.mergedNetworkHeaderCookie || '',
+    raw
+  );
+  bridge.lastNetworkHeaderCapturedAt = Date.now();
 
   if (isArkRelatedRequestUrl(url) || cookieContainsArkToken(raw)) {
     bridge.lastArkRequestCookie = mergeCookiePartsPreferLongest(bridge.lastArkRequestCookie || '', raw);
