@@ -15,6 +15,8 @@ const SHOPS_CONFIG = path.join(ROOT, 'config', 'qianfan-shops.json');
 const UPLOAD_INTERVAL_MS = 10 * 60 * 1000;
 const FALLBACK_INTERVAL_MS = 10 * 60 * 1000;
 const CHECK_DEBOUNCE_MS = 5000;
+const FAILURE_COOLDOWN_MS = 3 * 60 * 1000;
+const CANONICAL_SHOPS = ['拾玉居和田玉', '和田雅玉', '祥钰珠宝', 'XY祥钰珠宝'];
 
 const QIANFAN_COOKIE_DOMAINS = [
   'xiaohongshu.com',
@@ -27,6 +29,8 @@ let refreshTimer = null;
 let shopsMappingCache = null;
 const pendingChecks = new Map();
 const loginRecoveredShops = new Set();
+const failureCooldownUntil = new Map();
+let lastAutoSyncAt = null;
 
 function getControlConfig() {
   const cc = config.controlCenter || {};
@@ -72,6 +76,37 @@ function saveState(state) {
 
 function hashPrefix(hash) {
   return String(hash || '').slice(0, 8);
+}
+
+function shopResultSummary(collected, uploadResult) {
+  const hash = collected?.cookieHash || '';
+  return {
+    shopName: collected?.shopName || '',
+    ok: Boolean(uploadResult?.ok),
+    hash8: hashPrefix(hash),
+    length: collected?.cookie ? collected.cookie.length : 0,
+    updatedAt: uploadResult?.ok
+      ? new Date().toISOString()
+      : collected?.capturedAt || null,
+    message: uploadResult?.ok
+      ? uploadResult.data?.unchanged
+        ? '已刷新在线时间'
+        : '已上传'
+      : uploadResult?.error || uploadResult?.reason || '采集失败',
+  };
+}
+
+function isFailureCooling(shopKey) {
+  const until = failureCooldownUntil.get(shopKey) || 0;
+  return Date.now() < until;
+}
+
+function noteFailure(shopKey) {
+  failureCooldownUntil.set(shopKey, Date.now() + FAILURE_COOLDOWN_MS);
+}
+
+function clearFailure(shopKey) {
+  failureCooldownUntil.delete(shopKey);
 }
 
 function hashCookie(normalized) {
@@ -331,23 +366,28 @@ function handleCookieUploadResult(result, state, shopKey, collected) {
   return entry;
 }
 
-async function runCookieCheckForShop(shopTitle, reason = 'manual') {
+async function runCookieCheckForShop(shopTitle, reason = 'manual', options = {}) {
   const cc = getControlConfig();
   if (!cc.enabled) return { skipped: true, reason: 'disabled' };
 
+  const shopKey = String(shopTitle);
+  if (!options.force && isFailureCooling(shopKey)) {
+    return { skipped: true, reason: 'failure_cooldown', shopName: shopTitle };
+  }
+
   const bridge = findBridgeByShopTitle(shopTitle);
-  if (!bridge) return { skipped: true, reason: 'no_bridge' };
+  if (!bridge) return { skipped: true, reason: 'no_bridge', shopName: shopTitle };
 
   const collected = await collectQianfanCookies(bridge);
-  if (!collected) return { skipped: true, reason: 'no_cookie' };
+  if (!collected) return { skipped: true, reason: 'no_cookie', shopName: shopTitle };
 
   const state = loadState();
-  const shopKey = collected.shopName || shopTitle;
-  const prev = state.shops[shopKey];
-  const loginRecovered = loginRecoveredShops.has(shopKey);
-  const decision = shouldUploadCookie(prev, collected, { loginRecovered });
+  const resolvedKey = collected.shopName || shopTitle;
+  const prev = state.shops[resolvedKey];
+  const loginRecovered = loginRecoveredShops.has(resolvedKey);
+  const decision = shouldUploadCookie(prev, collected, { loginRecovered, force: options.force });
 
-  state.shops[shopKey] = {
+  state.shops[resolvedKey] = {
     ...(prev || {}),
     shopName: collected.shopName,
     shopId: collected.shopId || prev?.shopId || '',
@@ -357,8 +397,15 @@ async function runCookieCheckForShop(shopTitle, reason = 'manual') {
   };
   saveState(state);
 
-  if (!decision.upload) {
-    return { skipped: true, reason: decision.reason, shopName: collected.shopName };
+  if (!decision.upload && !options.force) {
+    return {
+      skipped: true,
+      reason: decision.reason,
+      shopName: collected.shopName,
+      hash8: hashPrefix(collected.cookieHash),
+      length: collected.cookie.length,
+      updatedAt: prev?.lastUploadedAt || collected.capturedAt,
+    };
   }
 
   println(
@@ -372,20 +419,36 @@ async function runCookieCheckForShop(shopTitle, reason = 'manual') {
     result = { ok: false, error: err.message || String(err) };
   }
 
-  handleCookieUploadResult(result, state, shopKey, collected);
-  loginRecoveredShops.delete(shopKey);
+  handleCookieUploadResult(result, state, resolvedKey, collected);
+  loginRecoveredShops.delete(resolvedKey);
 
   if (result.ok) {
+    clearFailure(resolvedKey);
+    lastAutoSyncAt = new Date().toISOString();
     const msg =
       result.data?.unchanged
         ? `千帆 Cookie 没变化，只刷新了在线时间，店铺：${collected.shopName}。`
         : `千帆 Cookie 已自动更新到总控台，店铺：${collected.shopName}。`;
     println(msg);
-    return { ok: true, unchanged: Boolean(result.data?.unchanged), shopName: collected.shopName };
+    return {
+      ok: true,
+      unchanged: Boolean(result.data?.unchanged),
+      shopName: collected.shopName,
+      hash8: hashPrefix(collected.cookieHash),
+      length: collected.cookie.length,
+      updatedAt: new Date().toISOString(),
+    };
   }
 
+  noteFailure(resolvedKey);
   println('千帆 Cookie 上传失败，不影响当前机器人运行，将稍后重试。');
-  return { ok: false, error: result.error, shopName: collected.shopName };
+  return {
+    ok: false,
+    error: result.error,
+    shopName: collected.shopName,
+    hash8: hashPrefix(collected.cookieHash),
+    length: collected.cookie.length,
+  };
 }
 
 function triggerCookieCheck(shopTitle, reason = 'event') {
@@ -409,6 +472,126 @@ function triggerCookieCheck(shopTitle, reason = 'event') {
   return task;
 }
 
+async function runSyncNowAll(reason = 'manual') {
+  const cc = getControlConfig();
+  if (!cc.enabled) {
+    return {
+      ok: false,
+      source: 'qianfan-bridge',
+      total: CANONICAL_SHOPS.length,
+      success: 0,
+      failed: CANONICAL_SHOPS.length,
+      shops: [],
+      message: '总控台上传未配置，请检查 SERVICE_TOKEN',
+    };
+  }
+
+  const registered = listRegisteredShops().filter((s) => s && !s.startsWith('__'));
+  if (!registered.length) {
+    return {
+      ok: false,
+      source: 'qianfan-bridge',
+      total: CANONICAL_SHOPS.length,
+      success: 0,
+      failed: CANONICAL_SHOPS.length,
+      shops: [],
+      message: '没有检测到千帆客服台，请先打开千帆客服台',
+    };
+  }
+
+  const shops = [];
+  let success = 0;
+  let failed = 0;
+
+  for (const shopName of CANONICAL_SHOPS) {
+    const bridge = findBridgeByShopTitle(shopName);
+    if (!bridge) {
+      failed += 1;
+      shops.push({
+        shopName,
+        ok: false,
+        hash8: '',
+        length: 0,
+        updatedAt: null,
+        message: '未检测到该店铺页面',
+      });
+      continue;
+    }
+
+    const collected = await collectQianfanCookies(bridge);
+    if (!collected) {
+      failed += 1;
+      shops.push({
+        shopName,
+        ok: false,
+        hash8: '',
+        length: 0,
+        updatedAt: null,
+        message: '未能读取 Cookie',
+      });
+      continue;
+    }
+
+    const state = loadState();
+    const shopKey = collected.shopName || shopName;
+    let result;
+    try {
+      result = await uploadCookieToControlCenter(collected);
+    } catch (err) {
+      result = { ok: false, error: err.message || String(err) };
+    }
+    handleCookieUploadResult(result, state, shopKey, collected);
+
+    if (result.ok) {
+      success += 1;
+      clearFailure(shopKey);
+      lastAutoSyncAt = new Date().toISOString();
+      shops.push(shopResultSummary(collected, result));
+    } else {
+      failed += 1;
+      noteFailure(shopKey);
+      shops.push(shopResultSummary(collected, result));
+    }
+  }
+
+  const total = CANONICAL_SHOPS.length;
+  const ok = success === total;
+  let message = 'Cookie 已同步';
+  if (!success) {
+    message = '没有检测到千帆客服台，请先打开千帆客服台';
+  } else if (failed > 0) {
+    message = `Cookie 部分同步成功：${success}/${total} 店成功`;
+  }
+
+  println(
+    `[Cookie] 手动同步完成 success=${success}/${total} hash示例=${shops.find((s) => s.hash8)?.hash8 || '-'}`
+  );
+
+  return { ok, source: 'qianfan-bridge', total, success, failed, shops, message };
+}
+
+function getAutoSyncStatus() {
+  const state = loadState();
+  let latest = lastAutoSyncAt;
+  for (const entry of Object.values(state.shops || {})) {
+    const t = entry?.lastUploadedAt || entry?.lastCollectedAt;
+    if (t && (!latest || Date.parse(t) > Date.parse(latest))) latest = t;
+  }
+  return {
+    ok: true,
+    autoSyncEnabled: getControlConfig().enabled,
+    lastAutoSyncAt: latest,
+    shopCount: Object.keys(state.shops || {}).length,
+  };
+}
+
+function runStartupCookieSync() {
+  const shops = listRegisteredShops().filter((s) => s && !s.startsWith('__'));
+  for (const shop of shops) {
+    void triggerCookieCheck(shop, 'startup');
+  }
+}
+
 async function runFallbackCheckAll() {
   const shops = listRegisteredShops().filter((s) => s && !s.startsWith('__'));
   for (const shop of shops) {
@@ -429,6 +612,7 @@ function scheduleCookieRefresh() {
   }, intervalMs);
   if (typeof refreshTimer.unref === 'function') refreshTimer.unref();
   println(`[Cookie] 已启动 ${cc.uploadIntervalMinutes || 10} 分钟兜底检查`);
+  void runStartupCookieSync();
 }
 
 function onBridgeRegistered(bridge) {
@@ -477,6 +661,9 @@ module.exports = {
   handleCookieUploadResult,
   scheduleCookieRefresh,
   triggerCookieCheck,
+  runSyncNowAll,
+  getAutoSyncStatus,
+  runStartupCookieSync,
   onBridgeRegistered,
   onWsConnected,
   onBuyerMessage,

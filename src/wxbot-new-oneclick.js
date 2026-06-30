@@ -229,6 +229,13 @@ async function main() {
     process.exit(1);
   }
 
+  try {
+    const { startQianfanLocalApi } = require('./qianfan-local-api');
+    await startQianfanLocalApi({ silent: false });
+  } catch (err) {
+    println(`[本地API] 启动失败：${err.message || err}`);
+  }
+
   startWxbotExe();
 
   const [report] = await Promise.all([waitForInjection(), qianfanClientPromise]);
