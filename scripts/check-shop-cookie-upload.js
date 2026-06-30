@@ -46,8 +46,10 @@ assert(uploaderSrc.includes('缺少 a1，跳过上传'));
 assert(uploaderSrc.includes('containsArkToken'));
 assert(uploaderSrc.includes('[Cookie诊断]'));
 assert(uploaderSrc.includes('shop.cookie typeof='));
-assert(uploaderSrc.includes('[object Object]'));
-assert(uploaderSrc.includes('ACCEPTABLE_SERVER_STATUSES'));
+assert(uploaderSrc.includes('skippedMissingArk'));
+assert(uploaderSrc.includes('READ_ONLY_COOKIE_COLLECT_OPTIONS'));
+assert(uploaderSrc.includes('readOnly: true'));
+assert(uploaderSrc.includes('allowPageMutation: false'));
 assert(apiSrc.includes('/api/shop-cookies/upload'));
 
 const xy = uploader.matchPageToShop('XY祥钰珠宝-工作台');

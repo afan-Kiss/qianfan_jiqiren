@@ -3,9 +3,11 @@ const {
   cookieContainsA1,
   cookieContainsArkToken,
   cookieContainsWalleToken,
+  READ_ONLY_COOKIE_COLLECT_OPTIONS,
 } = require('../src/shop-cookie-uploader');
 
 (async () => {
+  console.log('readOnlyCollectOptions=' + JSON.stringify(READ_ONLY_COOKIE_COLLECT_OPTIONS));
   const c = await collectAllShopCookies();
   const keys = Object.keys(c.collectedByKey || {});
   console.log('SUMMARY shops=' + keys.length + ' missing=' + JSON.stringify(c.missing) + ' incomplete=' + JSON.stringify(c.incomplete));
@@ -16,8 +18,8 @@ const {
     const hasA1 = col.hasA1 || cookieContainsA1(col.cookie);
     const hasArk = col.hasArk || cookieContainsArkToken(col.cookie);
     const hasWalle = col.hasWalle || cookieContainsWalleToken(col.cookie);
-    const wouldUpload =
-      hasA1 && typeof col.cookie === 'string' && col.cookie.trim() !== '[object Object]';
+    const cookieValid = typeof col.cookie === 'string' && col.cookie.trim() !== '[object Object]' && (col.cookie?.length || 0) >= 20;
+    const wouldUpload = hasA1 && hasArk && cookieValid;
     console.log(
       `| ${col.shopName || k} | ${hasA1} | ${hasArk} | ${hasWalle} | ${col.cookie?.length || 0} | ${wouldUpload} |`
     );
@@ -34,6 +36,7 @@ const {
         containsWalleToken: hasWalle,
         payloadContainsArkToken: hasArk,
         cookieType: typeof col.cookie,
+        readOnly: true,
         wouldUpload,
       })
     );

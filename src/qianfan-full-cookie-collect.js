@@ -387,7 +387,9 @@ function attachNetworkCookieSniffer(client) {
   };
 }
 
-async function probeArkTokenViaPage(client, pageUrl) {
+async function probeArkTokenViaPage(client, pageUrl, options = {}) {
+  const readOnly = options.readOnly !== false;
+  const allowPageMutation = options.allowPageMutation === true && !readOnly;
   const chunks = [];
   await ensureNetworkEnabled(client);
 
@@ -407,26 +409,35 @@ async function probeArkTokenViaPage(client, pageUrl) {
     }
   }
 
-  if (!chunks.some(cookieContainsArkToken) && client.Page?.navigate) {
-    const origin = String(pageUrl || '').split('#')[0];
-    for (const arkUrl of ARK_PROBE_PAGE_URLS) {
-      try {
-        println(`[Cookie采集] 尝试打开 ark 页面以获取 access-token-ark：${arkUrl}`);
-        await client.Page.navigate({ url: arkUrl });
-        await sleep(3500);
-        const afterNav = await readPageCdpCookies(client, arkUrl);
-        if (afterNav.cookie) chunks.push(afterNav.cookie);
-        if (cookieContainsArkToken(afterNav.cookie)) break;
-      } catch {
-        // ignore per-url
-      }
+  if (!chunks.some(cookieContainsArkToken)) {
+    if (!allowPageMutation) {
+      println(
+        '[Cookie采集] readOnly=true，缺 access-token-ark 时不跳转 ark 页面；请用户手动打开订单/数据页面后重试'
+      );
+      return mergeCookiePartsPreferLongest(...chunks);
     }
-    if (origin) {
-      try {
-        await client.Page.navigate({ url: origin });
-        await sleep(800);
-      } catch {
-        // ignore restore
+
+    if (client.Page?.navigate) {
+      const origin = String(pageUrl || '').split('#')[0];
+      for (const arkUrl of ARK_PROBE_PAGE_URLS) {
+        try {
+          println(`[Cookie采集] 尝试打开 ark 页面以获取 access-token-ark：${arkUrl}`);
+          await client.Page.navigate({ url: arkUrl });
+          await sleep(3500);
+          const afterNav = await readPageCdpCookies(client, arkUrl);
+          if (afterNav.cookie) chunks.push(afterNav.cookie);
+          if (cookieContainsArkToken(afterNav.cookie)) break;
+        } catch {
+          // ignore per-url
+        }
+      }
+      if (origin) {
+        try {
+          await client.Page.navigate({ url: origin });
+          await sleep(800);
+        } catch {
+          // ignore restore
+        }
       }
     }
   }
@@ -492,6 +503,8 @@ function logCookieDiagnostics(shopName, diag) {
 
 async function collectFullCookiesFromBridge(bridge, options = {}) {
   if (!bridge?.client) return null;
+  const readOnly = options.readOnly !== false;
+  const allowPageMutation = options.allowPageMutation === true && !readOnly;
   const client = bridge.client;
   const pageUrl = String(bridge.pageInfo?.url || bridge.lastSeenUrl || 'https://walle.xiaohongshu.com').trim();
   const pageTitle = String(bridge.pageInfo?.pageTitle || bridge.pageInfo?.title || bridge.shopTitle || '').trim();
@@ -506,16 +519,22 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
   let pageCookies = await readPageDocumentCookie(client);
   let probeCookie = '';
 
-  if (!cookieContainsA1(pageCdp.cookie) && !cookieContainsA1(browserStorage.cookie) && options.retryReload !== false && client.Page?.reload) {
-    try {
-      println(`[Cookie采集] ${bridge.shopTitle || '店铺'} 缺少 a1，尝试刷新页面后重采…`);
-      await client.Page.reload({ ignoreCache: false });
-      await sleep(3000);
-      pageCdp = await readPageCdpCookies(client, pageUrl);
-      browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
-      pageCookies = await readPageDocumentCookie(client);
-    } catch {
-      // ignore reload errors
+  const missingA1 =
+    !cookieContainsA1(pageCdp.cookie) && !cookieContainsA1(browserStorage.cookie);
+  if (missingA1 && options.retryReload !== false) {
+    if (allowPageMutation && client.Page?.reload) {
+      try {
+        println(`[Cookie采集] ${bridge.shopTitle || '店铺'} 缺少 a1，尝试刷新页面后重采…`);
+        await client.Page.reload({ ignoreCache: false });
+        await sleep(3000);
+        pageCdp = await readPageCdpCookies(client, pageUrl);
+        browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
+        pageCookies = await readPageDocumentCookie(client);
+      } catch {
+        // ignore reload errors
+      }
+    } else {
+      println('[Cookie采集] readOnly=true，跳过页面刷新，只读取现有 Cookie');
     }
   }
 
@@ -530,7 +549,7 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
   );
 
   if (cookieContainsA1(mergedSoFar) && !cookieContainsArkToken(mergedSoFar) && options.probeArk !== false) {
-    probeCookie = await probeArkTokenViaPage(client, pageUrl);
+    probeCookie = await probeArkTokenViaPage(client, pageUrl, { readOnly, allowPageMutation });
     await sleep(1000);
     pageCdp = await readPageCdpCookies(client, pageUrl);
     browserStorage = await readBrowserStorageCookies(targetMeta.browserContextId);
@@ -561,6 +580,8 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
     shopName: bridge.shopTitle || '',
     pageTitle,
     url: pageUrl,
+    readOnly,
+    allowPageMutation,
     targetId: targetMeta.targetId || bridge.pageInfo?.targetId || '',
     browserContextId: targetMeta.browserContextId || '',
     sessionPartition: bridge.pageInfo?.sessionPartition || '',

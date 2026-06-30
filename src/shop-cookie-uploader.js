@@ -206,6 +206,34 @@ function matchPageToShop(pageTitle) {
   return null;
 }
 
+function isLoginOrAuthUrl(url) {
+  const u = String(url || '').toLowerCase();
+  return (
+    u.includes('/login') ||
+    u.includes('passport') ||
+    u.includes('/auth') ||
+    u.includes('/sso') ||
+    u.includes('login.xiaohongshu') ||
+    u.includes('account.xiaohongshu')
+  );
+}
+
+function isOrderCapableCookie(cookie) {
+  return (
+    isValidCookieString(cookie) &&
+    cookieContainsA1(cookie) &&
+    cookieContainsArkToken(cookie)
+  );
+}
+
+const READ_ONLY_COOKIE_COLLECT_OPTIONS = {
+  readOnly: true,
+  allowPageMutation: false,
+  retryReload: false,
+  probeArk: true,
+  logDiagnostics: false,
+};
+
 function isXhsWorkbenchUrl(url) {
   const u = String(url || '').toLowerCase();
   return u.includes('xiaohongshu.com') || u.includes('xiaohongshu.net');
@@ -250,7 +278,13 @@ async function logCdpTargetInventory(missingRows = []) {
 }
 
 async function collectShopCookieFromBridge(bridge, shopRow, pageMeta = {}) {
-  const full = await collectFullCookiesFromBridge(bridge, { retryReload: true, logDiagnostics: false });
+  const pageUrl = String(bridge.pageInfo?.url || pageMeta.url || bridge.lastSeenUrl || '').trim();
+  if (isLoginOrAuthUrl(pageUrl)) {
+    println(`[Cookie采集] ${shopRow.shopName} 当前是登录页（${pageUrl}），跳过只读采集，不提交 Cookie`);
+    return null;
+  }
+
+  const full = await collectFullCookiesFromBridge(bridge, READ_ONLY_COOKIE_COLLECT_OPTIONS);
   if (!full?.cookie || full.cookie.length < 20) return null;
 
   const shopCtx = detectShopFromQianfanContext(bridge.pageInfo || pageMeta || {}, {
@@ -312,7 +346,12 @@ async function collectFromDevToolsForShops(missingRows = []) {
 
   const candidatePages = (report.shops || []).filter((page) => {
     const matched = matchPageToShop(page.shopTitle || page.pageTitle || '');
-    return matched && targets.has(matched.shopKey) && isXhsWorkbenchUrl(page.url);
+    return (
+      matched &&
+      targets.has(matched.shopKey) &&
+      isXhsWorkbenchUrl(page.url) &&
+      !isLoginOrAuthUrl(page.url)
+    );
   });
 
   for (const page of candidatePages) {
@@ -465,7 +504,12 @@ function buildUploadPayload(collectedByKey) {
       `[Cookie诊断] ${shopName} shop.cookie typeof=${cookieType} containsA1=${payloadContainsA1} containsArkToken=${payloadContainsArkToken} containsWalleToken=${payloadContainsWalleToken} length=${cookieStr?.length || 0} keys=${(collected.cookieKeys || extractCookieKeys(cookieStr)).join(',')}`
     );
     if (!payloadContainsArkToken) {
-      println(`[Cookie上传] ${shopName}：containsA1=true 但缺 access-token-ark，上传后可能无法同步订单`);
+      println(`[Cookie上传] ${shopName}：缺 access-token-ark，buildUploadPayload 跳过该店`);
+      continue;
+    }
+    if (!isOrderCapableCookie(cookieStr)) {
+      println(`[Cookie诊断] ${shopName} 跳过：Cookie 不满足订单同步要求（需 a1 + access-token-ark）`);
+      continue;
     }
     if (!isValidCookieString(cookieStr)) {
       println(`[Cookie诊断] ${shopName} 跳过：cookie 不是有效字符串（typeof=${cookieType}）`);
@@ -583,9 +627,10 @@ function applyStatusToShopResults(shopResults, statusPayload) {
         shop.message = `服务器验证：Cookie 缺少 a1，请刷新该店商家后台后重新提交`;
         println(`[Cookie上传] ${shop.shopName}：服务器反馈缺少 a1，需重新采集完整 Cookie`);
       } else if (/access-token-ark/i.test(reasonText)) {
-        shop.ok = true;
-        shop.message = `已上传，但缺少 access-token-ark，请打开该店订单/数据页面后重新提交`;
-        println(`[Cookie上传] ${shop.shopName}：服务器反馈缺少 access-token-ark，请在千帆点击订单管理后重试`);
+        shop.ok = false;
+        shop.serverStatus = 'missing_ark';
+        shop.message = `Cookie 缺少订单同步 token，不能同步订单；请打开该店订单/数据页面后重新提交`;
+        println(`[Cookie上传] ${shop.shopName}：服务器反馈缺少 access-token-ark，不能同步订单`);
       } else {
         shop.ok = true;
         shop.message = `已上传，验证失败，请重新获取 Cookie（${reasonText || 'invalid'}）`;
@@ -692,11 +737,11 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
     const cache = loadUploadCookieCache();
     for (const shopKey of shopKeys) {
       const collected = collectedByKey[shopKey];
-      if (!collected?.cookie || !cookieContainsA1(collected.cookie)) continue;
+      if (!collected?.cookie || !isOrderCapableCookie(collected.cookie)) continue;
       cache[shopKey] = {
         cookie: collected.cookie,
         savedAt: new Date().toISOString(),
-        hasArk: cookieContainsArkToken(collected.cookie),
+        hasArk: true,
       };
     }
     saveUploadCookieCache(cache);
@@ -731,27 +776,50 @@ function buildIncompleteShopResults(incompleteNames, collectedByKey) {
   });
 }
 
+function buildMissingArkShopResults(missingArkNames, collectedByKey) {
+  return missingArkNames.map((shopName) => {
+    const shopKey = SHOP_KEY_BY_NAME[shopName] || shopName;
+    const collected = collectedByKey[shopKey];
+    return buildShopResult(shopKey, {
+      shopName,
+      ok: false,
+      serverStatus: 'partial_cookie',
+      length: collected?.cookie?.length || 0,
+      message:
+        '已读取到登录 Cookie，但缺少订单同步 token，本次未上传，避免覆盖可同步 Cookie。请在该店打开订单/数据页面后重新提交。',
+    });
+  });
+}
+
 function filterUploadableCookies(collectedByKey) {
   const uploadable = {};
   const skippedNoA1 = [];
+  const skippedMissingArk = [];
+  const skippedInvalid = [];
   for (const [shopKey, collected] of Object.entries(collectedByKey || {})) {
+    const shopName = shopDisplayName(shopKey);
     if (!isValidCookieString(collected.cookie)) {
-      skippedNoA1.push(shopDisplayName(shopKey));
-      println(`[Cookie上传] ${shopDisplayName(shopKey)}：cookie 无效（typeof=${typeof collected.cookie}），跳过上传`);
+      skippedInvalid.push(shopName);
+      println(`[Cookie上传] ${shopName}：cookie 无效（typeof=${typeof collected.cookie}），跳过上传`);
       continue;
     }
     const hasA1 = collected.hasA1 || cookieContainsA1(collected.cookie);
-    if (hasA1) {
-      uploadable[shopKey] = collected;
-      if (!(collected.hasArk || cookieContainsArkToken(collected.cookie))) {
-        println(`[Cookie上传] ${shopDisplayName(shopKey)}：已上传但缺 access-token-ark，canSyncOrders 可能为 false`);
-      }
-    } else {
-      skippedNoA1.push(shopDisplayName(shopKey));
-      println(`[Cookie上传] ${shopDisplayName(shopKey)}：缺少 a1，跳过上传`);
+    const hasArk = collected.hasArk || cookieContainsArkToken(collected.cookie);
+    if (!hasA1) {
+      skippedNoA1.push(shopName);
+      println(`[Cookie上传] ${shopName}：缺少 a1，跳过上传`);
+      continue;
     }
+    if (!hasArk) {
+      skippedMissingArk.push(shopName);
+      println(
+        `[Cookie上传] ${shopName}：缺 access-token-ark，本次不上传，避免覆盖服务端可同步 Cookie；请打开该店订单/数据页面后手动提交`
+      );
+      continue;
+    }
+    uploadable[shopKey] = collected;
   }
-  return { uploadable, skippedNoA1 };
+  return { uploadable, skippedNoA1, skippedMissingArk, skippedInvalid };
 }
 
 function buildMissingShopResults(missingShopNames) {
@@ -797,16 +865,26 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
   });
   const missingResults = buildMissingShopResults(missing);
   const incompleteResults = buildIncompleteShopResults(incomplete || [], collectedByKey);
-  const { uploadable, skippedNoA1 } = filterUploadableCookies(collectedByKey);
+  const { uploadable, skippedNoA1, skippedMissingArk, skippedInvalid } = filterUploadableCookies(collectedByKey);
+  const missingArkResults = buildMissingArkShopResults(skippedMissingArk, collectedByKey);
 
   if (!Object.keys(uploadable).length) {
-    const allFailed = [...missingResults, ...incompleteResults];
+    const allFailed = [...missingResults, ...incompleteResults, ...missingArkResults];
+    let message = '暂未采集到任何店铺 Cookie，请确认千帆客服台已打开并登录';
+    if (count > 0) {
+      if (skippedMissingArk.length && !incomplete.length && !missing.length) {
+        message =
+          '已读取到 Cookie，但缺少订单同步 token，未上传；请打开各店订单/数据页面后重新提交';
+      } else if (incomplete.length) {
+        message = `采集到 ${count} 店 Cookie，但均缺少 a1，未上传。请打开/刷新各店商家后台后重试`;
+      } else {
+        message =
+          '已读取到 Cookie，但缺少订单同步 token 或校验未通过，未上传；请打开各店订单/数据页面后重新提交';
+      }
+    }
     return {
       ok: false,
-      message:
-        count > 0
-          ? `采集到 ${count} 店 Cookie，但均缺少 a1，未上传。请打开/刷新各店商家后台后重试`
-          : '暂未采集到任何店铺 Cookie，请确认千帆客服台已打开并登录',
+      message,
       shops: allFailed,
       success: 0,
       failed: CANONICAL_SHOPS.length,
@@ -814,11 +892,13 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
       missing,
       incomplete,
       skippedNoA1,
+      skippedMissingArk,
+      skippedInvalid,
       reason,
     };
   }
 
-  println(`[Cookie上传] 准备提交 ${Object.keys(uploadable).length} 个店铺 Cookie（含 a1）`);
+  println(`[Cookie上传] 准备提交 ${Object.keys(uploadable).length} 个店铺 Cookie（含 a1 + access-token-ark）`);
 
   let uploadResult;
   try {
@@ -835,7 +915,7 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
     };
   }
 
-  const merged = [...(uploadResult.shops || []), ...incompleteResults, ...missingResults];
+  const merged = [...(uploadResult.shops || []), ...incompleteResults, ...missingArkResults, ...missingResults];
   const success = merged.filter((s) => s.ok).length;
   const failed = merged.length - success;
   const uploadedCount = Object.keys(uploadable).length;
@@ -855,6 +935,8 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
     missing,
     incomplete,
     skippedNoA1,
+    skippedMissingArk,
+    skippedInvalid,
     reason,
     message: summarizeUploadMessage({ ok: submittedOk, shops: merged, message: uploadResult.message }),
   };
@@ -902,5 +984,8 @@ module.exports = {
   cookieContainsA1,
   cookieContainsArkToken,
   cookieContainsWalleToken,
+  isLoginOrAuthUrl,
+  isOrderCapableCookie,
+  READ_ONLY_COOKIE_COLLECT_OPTIONS,
   matchPageToShop,
 };
