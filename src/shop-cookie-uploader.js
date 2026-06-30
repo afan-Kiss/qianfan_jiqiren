@@ -6,7 +6,12 @@ const config = require('./wechat/wxbot-new-config');
 const { fetchDevToolsJsonList, getPageTargets } = require('./devtools-list');
 const { detectQianfanShopPages } = require('./page-finder');
 const { registerQianfanWsBridge, findBridgeByShopTitle } = require('./qianfan-ws-bridge');
-const { collectQianfanCookies, hashPrefix } = require('./qianfan-cookie-collector');
+const { hashPrefix, hashCookie, detectShopFromQianfanContext } = require('./qianfan-cookie-collector');
+const {
+  collectFullCookiesFromBridge,
+  logCookieCollectionDiagnostics,
+  cookieContainsA1,
+} = require('./qianfan-full-cookie-collect');
 const { fetchWithTimeout } = require('./fetch-timeout');
 const { println } = require('./utils');
 
@@ -129,11 +134,39 @@ function matchPageToShop(pageTitle) {
   return null;
 }
 
+async function collectShopCookieFromBridge(bridge, shopRow) {
+  const full = await collectFullCookiesFromBridge(bridge, { retryReload: true });
+  if (!full?.cookie || full.cookie.length < 20) return null;
+
+  const shopCtx = detectShopFromQianfanContext(bridge.pageInfo || {}, {
+    shopTitle: bridge.shopTitle || shopRow.shopName,
+    lastSeenUrl: bridge.pageInfo?.url,
+  });
+
+  logCookieCollectionDiagnostics(shopRow.shopName, full);
+
+  return {
+    platform: 'qianfan',
+    shopName: shopRow.shopName,
+    shopId: shopCtx.shopId,
+    accountName: shopCtx.accountName,
+    cookie: full.cookie,
+    cookieHash: full.cookieHash || hashCookie(full.cookie),
+    hasA1: full.hasA1,
+    cookieKeyCount: full.cookieKeyCount,
+    cookieKeys: full.cookieKeys,
+    source: 'qianfan-full-cdp',
+    lastSeenUrl: full.pageUrl || shopCtx.lastSeenUrl,
+    capturedAt: new Date().toISOString(),
+    matchedBy: shopCtx.matchedBy,
+  };
+}
+
 async function collectFromBridge(shopRow) {
   for (const name of shopRow.matchNames) {
     const bridge = findBridgeByShopTitle(name);
     if (!bridge) continue;
-    const collected = await collectQianfanCookies(bridge);
+    const collected = await collectShopCookieFromBridge(bridge, shopRow);
     if (collected?.cookie) return collected;
   }
   return null;
@@ -159,7 +192,7 @@ async function collectFromDevToolsForShops(missingRows = []) {
     try {
       client = await CDP({ target: page.webSocketDebuggerUrl });
       const bridge = await registerQianfanWsBridge(page, client);
-      const collected = await collectQianfanCookies(bridge);
+      const collected = await collectShopCookieFromBridge(bridge, matched);
       if (collected?.cookie) out.set(matched.shopKey, collected);
     } catch {
       // ignore per-page CDP failures
@@ -185,9 +218,6 @@ async function collectAllShopCookies(options = {}) {
     const collected = await collectFromBridge(row);
     if (collected?.cookie) {
       collectedByKey[row.shopKey] = collected;
-      println(
-        `[Cookie上传] ${row.shopName}：已采集，长度 ${collected.cookie.length}，预览 ${maskCookiePreview(collected.cookie)}`
-      );
       continue;
     }
     missing.push(row);
@@ -199,17 +229,24 @@ async function collectAllShopCookies(options = {}) {
       const collected = cdpMap.get(row.shopKey);
       if (!collected?.cookie) continue;
       collectedByKey[row.shopKey] = collected;
-      println(
-        `[Cookie上传] ${row.shopName}：已采集（CDP），长度 ${collected.cookie.length}，预览 ${maskCookiePreview(collected.cookie)}`
-      );
       const idx = missing.findIndex((m) => m.shopKey === row.shopKey);
       if (idx >= 0) missing.splice(idx, 1);
+    }
+  }
+
+  const incomplete = [];
+  for (const row of CANONICAL_SHOPS) {
+    const collected = collectedByKey[row.shopKey];
+    if (!collected) continue;
+    if (!collected.hasA1 && !cookieContainsA1(collected.cookie)) {
+      incomplete.push(row.shopName);
     }
   }
 
   return {
     collectedByKey,
     missing: missing.map((r) => r.shopName),
+    incomplete,
     count: Object.keys(collectedByKey).length,
   };
 }
@@ -352,13 +389,23 @@ function applyStatusToShopResults(shopResults, statusPayload) {
     if (!entry) continue;
     shop.serverStatus = String(entry.status || '').trim();
     shop.lastUploadAt = String(entry.lastUploadAt || entry.updatedAt || '').trim();
+    if (entry.canSyncOrders === false) {
+      println(`[Cookie上传] ${shop.shopName}：canSyncOrders=false，原因：${entry.reason || '未知'}`);
+    }
     const status = String(entry.status || '').toLowerCase();
     const label = formatServerStatusLabel(entry.status, entry.reason);
 
     if (status === 'invalid') {
-      shop.ok = true;
-      shop.message = `已上传，验证失败，请重新获取 Cookie（${entry.reason || 'invalid'}）`;
-      println(`[Cookie上传] ${shop.shopName}：已上传但验证失败，请重新获取`);
+      const reasonText = String(entry.reason || '');
+      if (/缺少\s*a1/i.test(reasonText)) {
+        shop.ok = false;
+        shop.message = `服务器验证：Cookie 缺少 a1，请刷新该店商家后台后重新提交`;
+        println(`[Cookie上传] ${shop.shopName}：服务器反馈缺少 a1，需重新采集完整 Cookie`);
+      } else {
+        shop.ok = true;
+        shop.message = `已上传，验证失败，请重新获取 Cookie（${reasonText || 'invalid'}）`;
+        println(`[Cookie上传] ${shop.shopName}：已上传但验证失败，请重新获取`);
+      }
     } else if (isServerReceived(entry)) {
       shop.ok = true;
       shop.message = `服务器已收到，状态：${label}`;
@@ -471,6 +518,34 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
   };
 }
 
+function buildIncompleteShopResults(incompleteNames, collectedByKey) {
+  return incompleteNames.map((shopName) => {
+    const shopKey = SHOP_KEY_BY_NAME[shopName] || shopName;
+    const collected = collectedByKey[shopKey];
+    return buildShopResult(shopKey, {
+      shopName,
+      ok: false,
+      length: collected?.cookie?.length || 0,
+      message: '本地校验：Cookie 缺少 a1，未上传（请打开/刷新该店小红书商家后台后重试）',
+    });
+  });
+}
+
+function filterUploadableCookies(collectedByKey) {
+  const uploadable = {};
+  const skippedNoA1 = [];
+  for (const [shopKey, collected] of Object.entries(collectedByKey || {})) {
+    const hasA1 = collected.hasA1 || cookieContainsA1(collected.cookie);
+    if (hasA1) {
+      uploadable[shopKey] = collected;
+    } else {
+      skippedNoA1.push(shopDisplayName(shopKey));
+      println(`[Cookie上传] ${shopDisplayName(shopKey)}：缺少 a1，跳过上传`);
+    }
+  }
+  return { uploadable, skippedNoA1 };
+}
+
 function buildMissingShopResults(missingShopNames) {
   return missingShopNames.map((shopName) =>
     buildShopResult(SHOP_KEY_BY_NAME[shopName] || shopName, {
@@ -509,48 +584,57 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
 
   logUploadConfig(uploadCfg);
 
-  const { collectedByKey, missing, count } = await collectAllShopCookies({
+  const { collectedByKey, missing, incomplete, count } = await collectAllShopCookies({
     useDevToolsFallback: options.useDevToolsFallback !== false,
   });
   const missingResults = buildMissingShopResults(missing);
+  const incompleteResults = buildIncompleteShopResults(incomplete || [], collectedByKey);
+  const { uploadable, skippedNoA1 } = filterUploadableCookies(collectedByKey);
 
-  if (!count) {
+  if (!Object.keys(uploadable).length) {
+    const allFailed = [...missingResults, ...incompleteResults];
     return {
       ok: false,
-      message: '暂未采集到任何店铺 Cookie，请确认千帆客服台已打开并登录',
-      shops: missingResults,
+      message:
+        count > 0
+          ? `采集到 ${count} 店 Cookie，但均缺少 a1，未上传。请打开/刷新各店商家后台后重试`
+          : '暂未采集到任何店铺 Cookie，请确认千帆客服台已打开并登录',
+      shops: allFailed,
       success: 0,
       failed: CANONICAL_SHOPS.length,
       total: CANONICAL_SHOPS.length,
       missing,
+      incomplete,
+      skippedNoA1,
       reason,
     };
   }
 
-  println(`[Cookie上传] 准备提交 ${count} 个店铺 Cookie`);
+  println(`[Cookie上传] 准备提交 ${Object.keys(uploadable).length} 个店铺 Cookie（含 a1）`);
 
   let uploadResult;
   try {
-    uploadResult = await uploadShopCookiesBatch(collectedByKey, { verifyStatus: options.verifyStatus });
+    uploadResult = await uploadShopCookiesBatch(uploadable, { verifyStatus: options.verifyStatus });
   } catch (err) {
     uploadResult = {
       ok: false,
       message: err.message || String(err),
-      shops: Object.keys(collectedByKey).map((shopKey) =>
+      shops: Object.keys(uploadable).map((shopKey) =>
         buildShopResult(shopKey, { ok: false, message: err.message || String(err) })
       ),
       success: 0,
-      failed: Object.keys(collectedByKey).length,
+      failed: Object.keys(uploadable).length,
     };
   }
 
-  const merged = [...(uploadResult.shops || []), ...missingResults];
+  const merged = [...(uploadResult.shops || []), ...incompleteResults, ...missingResults];
   const success = merged.filter((s) => s.ok).length;
   const failed = merged.length - success;
-  const submittedOk = success >= count;
+  const uploadedCount = Object.keys(uploadable).length;
+  const submittedOk = success >= uploadedCount && uploadedCount > 0;
   const allFourOk = success === CANONICAL_SHOPS.length;
 
-  println(`[Cookie上传] 完成：${success}/${CANONICAL_SHOPS.length}（已采集 ${count} 店）reason=${reason}`);
+  println(`[Cookie上传] 完成：${success}/${CANONICAL_SHOPS.length}（已上传 ${uploadedCount} 店）reason=${reason}`);
 
   return {
     ...uploadResult,
@@ -561,6 +645,8 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
     failed,
     total: CANONICAL_SHOPS.length,
     missing,
+    incomplete,
+    skippedNoA1,
     reason,
     message: summarizeUploadMessage({ ok: submittedOk, shops: merged, message: uploadResult.message }),
   };
@@ -605,4 +691,5 @@ module.exports = {
   summarizeUploadMessage,
   fetchShopCookieStatus,
   maskCookiePreview,
+  cookieContainsA1,
 };

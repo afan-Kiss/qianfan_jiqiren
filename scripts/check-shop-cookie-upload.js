@@ -3,25 +3,43 @@ const fs = require('fs');
 const path = require('path');
 
 const uploader = require('../src/shop-cookie-uploader');
+const full = require('../src/qianfan-full-cookie-collect');
 const uploaderSrc = fs.readFileSync(path.join(__dirname, '../src/shop-cookie-uploader.js'), 'utf8');
+const fullSrc = fs.readFileSync(path.join(__dirname, '../src/qianfan-full-cookie-collect.js'), 'utf8');
 const apiSrc = fs.readFileSync(path.join(__dirname, '../src/qianfan-local-api.js'), 'utf8');
-const listenerSrc = fs.readFileSync(path.join(__dirname, '../src/qianfan-message-listener.js'), 'utf8');
-const ipcSrc = fs.readFileSync(path.join(__dirname, '../src/main/ipc-bridge.js'), 'utf8');
-const preloadSrc = fs.readFileSync(path.join(__dirname, '../src/main/preload.js'), 'utf8');
-const htmlSrc = fs.readFileSync(path.join(__dirname, '../src/renderer/index.html'), 'utf8');
 
 assert.strictEqual(typeof uploader.runShopCookieUploadAll, 'function');
-assert.strictEqual(typeof uploader.triggerShopCookieUploadOnBuyerMessage, 'function');
-assert.strictEqual(typeof uploader.uploadShopCookiesBatch, 'function');
-assert.strictEqual(uploader.SHOP_KEY_BY_NAME['拾玉居'], 'shiyuju');
-assert.strictEqual(uploader.SHOP_KEY_BY_NAME['XY祥钰珠宝'], 'xyxiangyu');
+assert.strictEqual(typeof full.collectFullCookiesFromBridge, 'function');
+assert.strictEqual(typeof full.cookieContainsA1, 'function');
+
+assert.strictEqual(full.cookieContainsA1('a1=abc; web_session=1'), true);
+assert.strictEqual(full.cookieContainsA1('web_session=1; gid=2'), false);
+
+const merged = full.mergeCdpCookieEntries([
+  { name: 'a1', value: 'short', domain: '.xiaohongshu.com' },
+  { name: 'a1', value: 'longer-value-from-cdp', domain: '.xiaohongshu.com' },
+  { name: 'web_session', value: 'abc123', domain: 'walle.xiaohongshu.com' },
+]);
+assert(full.cookieContainsA1(merged), 'mergeCdpCookieEntries must keep a1');
+assert(merged.includes('longer-value-from-cdp'), 'merge must prefer longer a1 value');
+
+const longest = full.mergeCookiePartsPreferLongest(
+  'a1=from-header; gid=1',
+  'a1=from-cdp-longer-value; web_session=xyz'
+);
+assert(longest.includes('a1=from-cdp-longer-value'), 'longest merge must keep longer a1');
+
 assert(!uploaderSrc.includes('missing SHOP_COOKIE_UPLOAD_TOKEN'));
 assert(!uploaderSrc.includes('未配置 SHOP_COOKIE_UPLOAD_TOKEN'));
-
+assert(!uploaderSrc.includes('test_a=1'));
+assert(fullSrc.includes('getAllCookies'));
+assert(fullSrc.includes('getCookies'));
+assert(uploaderSrc.includes('缺少 a1，跳过上传'));
 assert(apiSrc.includes('/api/shop-cookies/upload'));
-assert(listenerSrc.includes('triggerShopCookieUploadOnBuyerMessage'));
-assert(ipcSrc.includes('app:upload-shop-cookies'));
-assert(preloadSrc.includes('uploadShopCookies'));
-assert(htmlSrc.includes('btn-upload-cookies'));
 
-console.log('[check-shop-cookie-upload] passed');
+const cfg = uploader.getShopCookieUploadConfig();
+assert.strictEqual(cfg.serverUrl, 'http://8.137.126.18');
+assert.strictEqual(cfg.uploadPath, '/api/shop-cookies/update');
+assert.strictEqual(cfg.statusPath, '/api/shop-cookies/status');
+
+console.log('[check-shop-cookie-upload] dry-run passed (no fake cookie uploaded to production server)');

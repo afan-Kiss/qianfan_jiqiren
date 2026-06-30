@@ -240,38 +240,11 @@ function detectShopFromQianfanContext(pageInfo = {}, extra = {}) {
 }
 
 async function collectCookiesFromBridge(bridge) {
-  if (!bridge?.client) return '';
-  const client = bridge.client;
-  const pageUrl = String(bridge.pageInfo?.url || 'https://walle.xiaohongshu.com').trim();
-  let cdpCookies = '';
-  let pageCookies = '';
-
-  try {
-    if (client.Network?.getAllCookies) {
-      const all = await client.Network.getAllCookies();
-      cdpCookies = cookiesFromCdpList(all?.cookies);
-    } else if (client.Network?.getCookies) {
-      const one = await client.Network.getCookies({ urls: [pageUrl] });
-      cdpCookies = cookiesFromCdpList(one?.cookies);
-    }
-  } catch {
-    // ignore CDP cookie read errors
-  }
-
-  try {
-    if (client.Runtime?.evaluate) {
-      const evalRes = await client.Runtime.evaluate({
-        expression: 'document.cookie || ""',
-        returnByValue: true,
-      });
-      pageCookies = normalizeCookie(evalRes?.result?.value || '');
-    }
-  } catch {
-    // ignore
-  }
-
-  const headerCookie = normalizeCookie(bridge.lastRequestCookie || '');
-  return mergeCookieStrings(cdpCookies, pageCookies, headerCookie);
+  const {
+    collectFullCookiesFromBridge,
+  } = require('./qianfan-full-cookie-collect');
+  const full = await collectFullCookiesFromBridge(bridge, { retryReload: false });
+  return full?.cookie || '';
 }
 
 async function collectQianfanCookies(bridgeOrContext) {
