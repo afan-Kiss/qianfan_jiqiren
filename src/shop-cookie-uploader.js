@@ -10,7 +10,9 @@ const { hashPrefix, hashCookie, detectShopFromQianfanContext } = require('./qian
 const {
   collectFullCookiesFromBridge,
   logCookieCollectionDiagnostics,
+  logCookieDiagnostics,
   cookieContainsA1,
+  extractCookieKeys,
 } = require('./qianfan-full-cookie-collect');
 const { fetchWithTimeout } = require('./fetch-timeout');
 const { println } = require('./utils');
@@ -117,33 +119,100 @@ function buildShopResult(shopKey, partial = {}) {
   };
 }
 
+function normalizePageShopTitle(pageTitle) {
+  return String(pageTitle || '')
+    .trim()
+    .replace(/-工作台\s*$/i, '')
+    .replace(/工作台\s*$/i, '')
+    .trim();
+}
+
 function matchPageToShop(pageTitle) {
-  const title = String(pageTitle || '').trim();
+  const title = normalizePageShopTitle(pageTitle);
   if (!title) return null;
-  const lower = title.toLowerCase();
+
+  let best = null;
+  let bestLen = 0;
   for (const row of CANONICAL_SHOPS) {
     for (const name of row.matchNames) {
-      if (title === name || title.includes(name) || name.includes(title)) {
-        return row;
+      if (title !== name && !title.includes(name)) continue;
+      if (name.length > bestLen) {
+        best = row;
+        bestLen = name.length;
       }
     }
   }
+  if (best) return best;
+
+  const lower = title.toLowerCase();
   if (lower.includes('xy') && (lower.includes('祥钰') || lower.includes('xiangyu'))) {
     return CANONICAL_SHOPS.find((s) => s.shopKey === 'xyxiangyu') || null;
   }
   return null;
 }
 
-async function collectShopCookieFromBridge(bridge, shopRow) {
-  const full = await collectFullCookiesFromBridge(bridge, { retryReload: true });
+function isXhsWorkbenchUrl(url) {
+  const u = String(url || '').toLowerCase();
+  return u.includes('xiaohongshu.com') || u.includes('xiaohongshu.net');
+}
+
+function findExactBridgeForShop(shopRow) {
+  const { listRegisteredShops } = require('./qianfan-ws-bridge');
+  const shopKey = shopRow.shopKey;
+  for (const registered of listRegisteredShops()) {
+    if (!registered || registered.startsWith('__')) continue;
+    const bridge = findBridgeByShopTitle(registered);
+    if (!bridge) continue;
+    const pageTitle = String(bridge.pageInfo?.shopTitle || bridge.shopTitle || registered).trim();
+    const matched = matchPageToShop(pageTitle);
+    if (matched?.shopKey === shopKey) return bridge;
+  }
+  return null;
+}
+
+async function logCdpTargetInventory(missingRows = []) {
+  const qd = config.qianfanDebug || {};
+  const port = qd.devtoolsPort || 9322;
+  const host = qd.devtoolsHost || '127.0.0.1';
+  try {
+    const list = await fetchDevToolsJsonList(port, host);
+    const pages = getPageTargets(list);
+    println(`[Cookie诊断] CDP 目标列表（共 ${pages.length} 个 page）`);
+    for (const t of pages) {
+      const matched = matchPageToShop(t.title || '');
+      const selectedFor = matched ? matched.shopName : '';
+      const xhs = isXhsWorkbenchUrl(t.url);
+      println(
+        `[Cookie诊断] target id=${t.id || '-'} type=${t.type || 'page'} title=${t.title || ''} url=${String(t.url || '').slice(0, 90)} xhs=${xhs} matchShop=${selectedFor || '-'}`
+      );
+    }
+    if (missingRows.length) {
+      println(`[Cookie诊断] 待采集店铺：${missingRows.map((r) => r.shopName).join('、')}`);
+    }
+  } catch (err) {
+    println(`[Cookie诊断] 无法读取 CDP 目标列表：${err.message || err}`);
+  }
+}
+
+async function collectShopCookieFromBridge(bridge, shopRow, pageMeta = {}) {
+  const full = await collectFullCookiesFromBridge(bridge, { retryReload: true, logDiagnostics: false });
   if (!full?.cookie || full.cookie.length < 20) return null;
 
-  const shopCtx = detectShopFromQianfanContext(bridge.pageInfo || {}, {
-    shopTitle: bridge.shopTitle || shopRow.shopName,
-    lastSeenUrl: bridge.pageInfo?.url,
+  const shopCtx = detectShopFromQianfanContext(bridge.pageInfo || pageMeta || {}, {
+    shopTitle: shopRow.shopName,
+    lastSeenUrl: full.pageUrl || bridge.pageInfo?.url,
   });
 
-  logCookieCollectionDiagnostics(shopRow.shopName, full);
+  const diagnostics = {
+    ...(full.diagnostics || {}),
+    shopName: shopRow.shopName,
+    pageTitle: full.pageTitle || pageMeta.pageTitle || bridge.pageInfo?.pageTitle || '',
+    url: full.pageUrl,
+    targetId: full.targetId || pageMeta.targetId || '',
+    browserContextId: full.browserContextId || '',
+    payloadContainsA1: full.hasA1,
+  };
+  logCookieDiagnostics(shopRow.shopName, diagnostics);
 
   return {
     platform: 'qianfan',
@@ -159,17 +228,17 @@ async function collectShopCookieFromBridge(bridge, shopRow) {
     lastSeenUrl: full.pageUrl || shopCtx.lastSeenUrl,
     capturedAt: new Date().toISOString(),
     matchedBy: shopCtx.matchedBy,
+    diagnostics,
+    targetId: diagnostics.targetId,
+    browserContextId: diagnostics.browserContextId,
+    pageTitle: diagnostics.pageTitle,
   };
 }
 
 async function collectFromBridge(shopRow) {
-  for (const name of shopRow.matchNames) {
-    const bridge = findBridgeByShopTitle(name);
-    if (!bridge) continue;
-    const collected = await collectShopCookieFromBridge(bridge, shopRow);
-    if (collected?.cookie) return collected;
-  }
-  return null;
+  const bridge = findExactBridgeForShop(shopRow);
+  if (!bridge) return null;
+  return collectShopCookieFromBridge(bridge, shopRow);
 }
 
 async function collectFromDevToolsForShops(missingRows = []) {
@@ -183,7 +252,12 @@ async function collectFromDevToolsForShops(missingRows = []) {
   const targets = new Set(missingRows.map((r) => r.shopKey));
   const out = new Map();
 
-  for (const page of report.shops || []) {
+  const candidatePages = (report.shops || []).filter((page) => {
+    const matched = matchPageToShop(page.shopTitle || page.pageTitle || '');
+    return matched && targets.has(matched.shopKey) && isXhsWorkbenchUrl(page.url);
+  });
+
+  for (const page of candidatePages) {
     const pageTitle = String(page.shopTitle || page.pageTitle || '').trim();
     const matched = matchPageToShop(pageTitle);
     if (!matched || !targets.has(matched.shopKey) || out.has(matched.shopKey)) continue;
@@ -191,11 +265,18 @@ async function collectFromDevToolsForShops(missingRows = []) {
     let client;
     try {
       client = await CDP({ target: page.webSocketDebuggerUrl });
-      const bridge = await registerQianfanWsBridge(page, client);
-      const collected = await collectShopCookieFromBridge(bridge, matched);
+      const bridge = await registerQianfanWsBridge(
+        { ...page, targetId: page.id || page.targetId },
+        client
+      );
+      const collected = await collectShopCookieFromBridge(bridge, matched, {
+        pageTitle,
+        targetId: page.id || '',
+        url: page.url,
+      });
       if (collected?.cookie) out.set(matched.shopKey, collected);
-    } catch {
-      // ignore per-page CDP failures
+    } catch (err) {
+      println(`[Cookie诊断] ${matched.shopName} CDP 采集失败：${err.message || err}`);
     } finally {
       if (client) {
         try {
@@ -224,6 +305,7 @@ async function collectAllShopCookies(options = {}) {
   }
 
   if (missing.length && useDevToolsFallback) {
+    await logCdpTargetInventory(missing);
     const cdpMap = await collectFromDevToolsForShops(missing);
     for (const row of [...missing]) {
       const collected = cdpMap.get(row.shopKey);
@@ -308,6 +390,10 @@ function buildUploadPayload(collectedByKey) {
   const shops = {};
   for (const [shopKey, collected] of Object.entries(collectedByKey)) {
     const shopName = shopDisplayName(shopKey);
+    const payloadContainsA1 = cookieContainsA1(collected.cookie);
+    println(
+      `[Cookie诊断] ${shopName} payload cookie containsA1=${payloadContainsA1} length=${collected.cookie?.length || 0} keys=${(collected.cookieKeys || extractCookieKeys(collected.cookie)).join(',')}`
+    );
     shops[shopKey] = {
       shopName,
       liveRoomName: shopName,
@@ -321,6 +407,23 @@ function buildUploadPayload(collectedByKey) {
     uploadedAt: new Date().toISOString(),
     shops,
   };
+}
+
+function logServerUploadDiagnostics(data, shopKeys) {
+  const resultMap =
+    (Array.isArray(data?.shops)
+      ? Object.fromEntries(data.shops.filter((r) => r?.shopKey).map((r) => [r.shopKey, r]))
+      : null) ||
+    (data?.shops && typeof data.shops === 'object' && !Array.isArray(data.shops) ? data.shops : null);
+  if (!resultMap) return;
+  for (const shopKey of shopKeys) {
+    const entry = resultMap[shopKey];
+    if (!entry) continue;
+    const shopName = shopDisplayName(shopKey);
+    println(
+      `[Cookie诊断] ${shopName} 服务端 receivedContainsA1=${entry.receivedContainsA1} savedContainsA1=${entry.savedContainsA1} cookieFieldUsed=${entry.cookieFieldUsed || '-'} receivedLen=${entry.receivedCookieLength ?? '-'} status=${entry.status || entry.cookieStatus || '-'}`
+    );
+  }
 }
 
 function parseUploadResponse(rawPayload, submittedKeys) {
@@ -465,8 +568,9 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
       uploadCfg.timeoutMs
     );
     data = await res.json().catch(() => ({}));
-    const brief = JSON.stringify(unwrapApiData(data)).slice(0, 300);
+    const brief = JSON.stringify(unwrapApiData(data)).slice(0, 500);
     println(`[Cookie上传] POST ${uploadCfg.uploadPath} -> ${res.status} ${brief}`);
+    logServerUploadDiagnostics(unwrapApiData(data), shopKeys);
   } catch (err) {
     return {
       ok: false,
@@ -692,4 +796,5 @@ module.exports = {
   fetchShopCookieStatus,
   maskCookiePreview,
   cookieContainsA1,
+  matchPageToShop,
 };

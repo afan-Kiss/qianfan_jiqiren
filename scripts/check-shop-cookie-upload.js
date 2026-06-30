@@ -20,8 +20,8 @@ const merged = full.mergeCdpCookieEntries([
   { name: 'a1', value: 'longer-value-from-cdp', domain: '.xiaohongshu.com' },
   { name: 'web_session', value: 'abc123', domain: 'walle.xiaohongshu.com' },
 ]);
-assert(full.cookieContainsA1(merged), 'mergeCdpCookieEntries must keep a1');
-assert(merged.includes('longer-value-from-cdp'), 'merge must prefer longer a1 value');
+assert(full.cookieContainsA1(merged.cookie), 'mergeCdpCookieEntries must keep a1');
+assert(merged.cookie.includes('longer-value-from-cdp'), 'merge must prefer longer a1 value');
 
 const longest = full.mergeCookiePartsPreferLongest(
   'a1=from-header; gid=1',
@@ -33,9 +33,18 @@ assert(!uploaderSrc.includes('missing SHOP_COOKIE_UPLOAD_TOKEN'));
 assert(!uploaderSrc.includes('未配置 SHOP_COOKIE_UPLOAD_TOKEN'));
 assert(!uploaderSrc.includes('test_a=1'));
 assert(fullSrc.includes('getAllCookies'));
-assert(fullSrc.includes('getCookies'));
+assert(fullSrc.includes('Storage.getCookies'));
 assert(uploaderSrc.includes('缺少 a1，跳过上传'));
+assert(uploaderSrc.includes('[Cookie诊断]'));
+assert(uploaderSrc.includes('payload cookie containsA1'));
 assert(apiSrc.includes('/api/shop-cookies/upload'));
+
+const xy = uploader.matchPageToShop('XY祥钰珠宝-工作台');
+assert.strictEqual(xy?.shopKey, 'xyxiangyu', 'XY page must match xyxiangyu not xiangyu');
+const plain = uploader.matchPageToShop('祥钰珠宝-工作台');
+assert.strictEqual(plain?.shopKey, 'xiangyu');
+const plainShort = uploader.matchPageToShop('祥钰珠宝');
+assert.strictEqual(plainShort?.shopKey, 'xiangyu', '祥钰珠宝 must not match xyxiangyu');
 
 const cfg = uploader.getShopCookieUploadConfig();
 assert.strictEqual(cfg.serverUrl, 'http://8.137.126.18');

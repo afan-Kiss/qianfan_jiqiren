@@ -13,6 +13,13 @@ async function fetchDevToolsJsonList(port = DEVTOOLS_PORT, host = DEVTOOLS_HOST)
   return list;
 }
 
+async function fetchDevToolsVersion(port = DEVTOOLS_PORT, host = DEVTOOLS_HOST) {
+  const url = `http://${host}:${port}/json/version`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error(`DevTools version ${host}:${port} 不可用：HTTP ${res.status}`);
+  return res.json();
+}
+
 function getPageTargets(list) {
   return list.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl);
 }
@@ -21,5 +28,6 @@ module.exports = {
   DEVTOOLS_PORT,
   DEVTOOLS_HOST,
   fetchDevToolsJsonList,
+  fetchDevToolsVersion,
   getPageTargets,
 };
