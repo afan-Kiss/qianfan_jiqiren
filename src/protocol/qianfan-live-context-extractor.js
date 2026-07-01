@@ -155,10 +155,11 @@ async function fetchLiveShopsViaApi() {
   throw err;
 }
 
-async function fetchLiveSnapshotViaApi(shopTitle) {
+async function fetchLiveSnapshotViaApi(shopTitle, options = {}) {
   const base = getLiveApiBaseUrl();
-  const url = `${base}/api/qianfan/protocol/snapshot?shopTitle=${encodeURIComponent(shopTitle)}`;
-  const { ok, status, json } = await fetchJson(url);
+  const refresh = options.refresh !== false ? '1' : '0';
+  const url = `${base}/api/qianfan/protocol/snapshot?shopTitle=${encodeURIComponent(shopTitle)}&refresh=${refresh}`;
+  const { ok, status, json } = await fetchJson(url, Number(options.timeoutMs || 15000));
   if (!ok) {
     const err = new Error(json?.message || json?.error || `snapshot failed HTTP ${status}`);
     err.code = json?.error || 'diagnostic_api_unavailable';
@@ -558,6 +559,17 @@ function mergeShopIntoLocal(existingAll, config, shopTitle, force = false) {
   return { shops: existingAll, shop, writtenFields: written };
 }
 
+function disableFixtureShops(existingAll, keepShopTitle) {
+  const keep = String(keepShopTitle || '').trim();
+  for (const row of existingAll) {
+    if (!row || row.shopTitle === keep) continue;
+    if (String(row.shopTitle || '') === '测试店铺名称' || String(row.cookie || '').includes('fixture-a1-value')) {
+      row.enabled = false;
+    }
+  }
+  return existingAll;
+}
+
 function saveLocalProtocolConfig(shops) {
   const p = localConfigPath();
   const dir = path.dirname(p);
@@ -590,6 +602,7 @@ module.exports = {
   summarizeLiveShopRow,
   mergeShopIntoLocal,
   saveLocalProtocolConfig,
+  disableFixtureShops,
   readExistingLocalConfig,
   writeLiveExportReport,
   printNextSteps,

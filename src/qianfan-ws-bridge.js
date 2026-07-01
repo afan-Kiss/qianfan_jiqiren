@@ -2375,6 +2375,135 @@ function listReceiverCacheForShop(shopTitle) {
   }
 }
 
+async function probePageImpaasWsUrls(bridge) {
+  if (!isBridgeCdpReady(bridge)) return [];
+  try {
+    await installWsHook(bridge.client);
+    const result = await cdpRuntimeEvaluate(bridge.client.Runtime, {
+      expression: `(function(){
+        if (window.__qfRehookImpaasSockets) window.__qfRehookImpaasSockets();
+        var list = window.__qfImpaasSockets || [];
+        var out = [];
+        for (var i = 0; i < list.length; i++) {
+          var w = list[i];
+          if (!w) continue;
+          var u = String(w.url || '');
+          if (!u) continue;
+          out.push({
+            url: u,
+            readyState: Number(w.readyState || 0),
+            score: Number(w.__qfSendRank || 0),
+            appCids: Array.isArray(w.__qfAppCids) ? w.__qfAppCids.slice() : [],
+          });
+        }
+        return out;
+      })()`,
+      returnByValue: true,
+    });
+    return Array.isArray(result?.result?.value) ? result.result.value : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergePageWsCandidates(existing, pageWsList) {
+  const out = Array.isArray(existing) ? [...existing] : [];
+  const seen = new Set(out.map((c) => c.url));
+  for (const row of pageWsList || []) {
+    const url = String(row?.url || '');
+    if (!url || !isRelevantProtocolWsUrl(url) || seen.has(url)) continue;
+    let score = Number(row.score) || 0;
+    if (/longlink/i.test(url)) score += 100;
+    if (/impaas/i.test(url)) score += 90;
+    if (Number(row.readyState) === 1) score += 40;
+    if (Array.isArray(row.appCids) && row.appCids.length) score += 30;
+    out.push({
+      requestId: `page-${out.length}`,
+      url,
+      score,
+      lastSeq: 0,
+      lastActivityAt: Date.now(),
+      seenMessageSend: score >= 100,
+      seenReadFromOne: false,
+      seenBuyerSync: false,
+      seenImpaasTraffic: true,
+      appCids: [...(row.appCids || [])],
+      source: 'page.__qfImpaasSockets',
+    });
+    seen.add(url);
+  }
+  out.sort(
+    (a, b) =>
+      b.score - a.score ||
+      b.lastActivityAt - a.lastActivityAt ||
+      b.lastSeq - a.lastSeq
+  );
+  return out;
+}
+
+async function enrichAndBuildQianfanProtocolSnapshot(shopTitle, options = {}) {
+  const snapshot = buildQianfanProtocolSnapshot(shopTitle, options);
+  if (!snapshot.ok) return snapshot;
+
+  const bridge = findBridgeByShopTitle(shopTitle);
+  if (!bridge || !isBridgeCdpReady(bridge)) {
+    snapshot.enrichSkipped = 'cdp_not_ready';
+    return snapshot;
+  }
+
+  const enrichNotes = [];
+  let mergedCookie = String(snapshot.cookieSources?.mergedNetworkHeaderCookie || '');
+
+  if (!mergedCookie || mergedCookie.length < 20) {
+    try {
+      const { collectFullCookiesFromBridge } = require('./qianfan-full-cookie-collect');
+      const collected = await collectFullCookiesFromBridge(bridge, {
+        readOnly: true,
+        requireRecentNetworkHeader: false,
+        networkHeaderWaitMs: Number(options.cookieWaitMs || 2500),
+        includeJarFallback: true,
+      });
+      if (collected?.cookie && collected.cookie.length >= 20) {
+        mergedCookie = collected.cookie;
+        bridge.mergedNetworkHeaderCookie = mergeCookiePartsPreferLongestSafe(
+          bridge.mergedNetworkHeaderCookie,
+          collected.cookie
+        );
+        enrichNotes.push('cdp_cookie_collect');
+      } else if (collected?.skipped) {
+        enrichNotes.push(`cookie_skipped:${collected.reason || 'unknown'}`);
+      }
+    } catch (err) {
+      enrichNotes.push(`cookie_error:${String(err.message || err).slice(0, 80)}`);
+    }
+  }
+
+  if (!snapshot.wsCandidates?.length) {
+    const pageWs = await probePageImpaasWsUrls(bridge);
+    if (pageWs.length) {
+      snapshot.wsCandidates = mergePageWsCandidates(snapshot.wsCandidates, pageWs);
+      enrichNotes.push(`page_ws:${pageWs.length}`);
+    }
+  }
+
+  snapshot.cookieSources = {
+    ...snapshot.cookieSources,
+    mergedNetworkHeaderCookie: mergedCookie,
+  };
+  snapshot.enrichedAt = Date.now();
+  snapshot.enrichNotes = enrichNotes;
+  return snapshot;
+}
+
+function mergeCookiePartsPreferLongestSafe(...parts) {
+  try {
+    const { mergeCookiePartsPreferLongest } = require('./qianfan-full-cookie-collect');
+    return mergeCookiePartsPreferLongest(...parts);
+  } catch {
+    return String(parts.filter(Boolean)[0] || '');
+  }
+}
+
 function buildQianfanProtocolSnapshot(shopTitle, options = {}) {
   const bridge = findBridgeByShopTitle(shopTitle);
   const normalizedShopTitle = normalizeShopKey(shopTitle);
@@ -2463,6 +2592,8 @@ module.exports = {
   getAllQianfanBridges,
   getQianfanBridgeByShopTitle,
   buildQianfanProtocolSnapshot,
+  enrichAndBuildQianfanProtocolSnapshot,
+  probePageImpaasWsUrls,
   normalizeShopKey,
   HTTP_CAPTURE_PATHS,
 };

@@ -138,13 +138,16 @@ async function startQianfanLocalApi(options = {}) {
         try {
           const urlObj = new URL(req.url, 'http://127.0.0.1');
           const shopTitle = String(urlObj.searchParams.get('shopTitle') || '').trim();
+          const refresh = String(urlObj.searchParams.get('refresh') || '1') !== '0';
           if (!shopTitle) {
             sendJson(res, 400, { ok: false, error: 'missing shopTitle' });
             return;
           }
-          const { buildQianfanProtocolSnapshot } = require('./qianfan-ws-bridge');
+          const { enrichAndBuildQianfanProtocolSnapshot, buildQianfanProtocolSnapshot } = require('./qianfan-ws-bridge');
           const { summarizeCookie } = require('./protocol/qianfan-protocol-config');
-          const snapshot = buildQianfanProtocolSnapshot(shopTitle);
+          const snapshot = refresh
+            ? await enrichAndBuildQianfanProtocolSnapshot(shopTitle, { cookieWaitMs: 2500 })
+            : buildQianfanProtocolSnapshot(shopTitle);
           if (!snapshot.ok) {
             sendJson(res, 404, { ok: false, error: snapshot.error || 'bridge_not_found', snapshot });
             return;
@@ -154,6 +157,7 @@ async function startQianfanLocalApi(options = {}) {
             ok: true,
             snapshot,
             cookieSummary: summarizeCookie(cookie),
+            refreshed: refresh,
           });
         } catch (err) {
           sendJson(res, 500, { ok: false, error: err.message || 'snapshot failed' });

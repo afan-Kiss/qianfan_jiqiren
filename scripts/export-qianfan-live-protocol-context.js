@@ -13,6 +13,8 @@ const {
   printNextSteps,
   getLiveApiBaseUrl,
   getGitCommit,
+  readExistingLocalConfig,
+  disableFixtureShops,
 } = require('../src/protocol/qianfan-live-context-extractor');
 
 function parseArgs(argv) {
@@ -151,13 +153,28 @@ async function main() {
   let localPath = '';
   let writtenFields = [];
   if (args.writeLocal) {
-    const { readExistingLocalConfig } = require('../src/protocol/qianfan-live-context-extractor');
+    if (!config.cookie || config.cookie.length < 20) {
+      console.error('\n[export-live] 无法写入 local：Cookie 为空或过短。');
+      console.error('请先在千帆客服台：');
+      console.error('  1) 点击目标店铺标签页（如 祥钰珠宝）');
+      console.error('  2) 打开与「饭饭」的会话');
+      console.error('  3) 手动发一条文字或切换会话触发网络请求');
+      console.error('  4) 再执行 export-live（会自动 CDP 补全 Cookie，约 2.5s）');
+      process.exit(1);
+    }
+    if (!config.ws?.url) {
+      console.error('\n[export-live] 无法写入 local：未找到 ws.url。');
+      console.error('请确保该店铺页已建立 impaas/longlink WebSocket（打开会话或发消息后再试）。');
+      process.exit(1);
+    }
     const existing = readExistingLocalConfig();
     const merged = mergeShopIntoLocal(existing, config, config.shopTitle, args.force);
+    disableFixtureShops(merged.shops, config.shopTitle);
     localPath = saveLocalProtocolConfig(merged.shops);
     writtenFields = merged.writtenFields;
     console.log('\n[export-live] 已写入', localPath);
-    console.log('写入字段:', writtenFields.join(', ') || '(无更新)');
+    console.log('写入字段:', writtenFields.join(', ') || '(结构已更新)');
+    console.log('已禁用 fixture 店铺「测试店铺名称」（如存在）');
   } else {
     console.log('\n[export-live] 未写入 local（加 --write-local 生效）');
   }

@@ -120,6 +120,21 @@ function loadProtocolShopConfigs(options = {}) {
 
 function findProtocolShopConfig(shopTitle, options = {}) {
   const title = String(shopTitle || '').trim();
+  if (options.allowIncomplete) {
+    const localPath = localConfigPath();
+    if (fs.existsSync(localPath)) {
+      const all = readJsonFile(localPath);
+      const hit = all.find((s) => s && String(s.shopTitle || '').trim() === title);
+      if (hit) {
+        return {
+          ...hit,
+          shopTitle: title,
+          cookie: String(hit.cookie || '').trim(),
+          cookieSummary: summarizeCookie(hit.cookie),
+        };
+      }
+    }
+  }
   const { shops } = loadProtocolShopConfigs(options);
   const hit = shops.find((s) => s.shopTitle === title);
   if (!hit) {
