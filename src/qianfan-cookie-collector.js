@@ -15,6 +15,7 @@ const SHOPS_CONFIG = path.join(ROOT, 'config', 'qianfan-shops.json');
 const UPLOAD_INTERVAL_MS = 10 * 60 * 1000;
 const FALLBACK_INTERVAL_MS = 10 * 60 * 1000;
 const CHECK_DEBOUNCE_MS = 5000;
+const COOKIE_UPLOAD_DEBOUNCE_MS = 5000;
 const FAILURE_COOLDOWN_MS = 3 * 60 * 1000;
 const CANONICAL_SHOPS = ['拾玉居和田玉', '和田雅玉', '祥钰珠宝', 'XY祥钰珠宝'];
 
@@ -30,7 +31,23 @@ let shopsMappingCache = null;
 const pendingChecks = new Map();
 const loginRecoveredShops = new Set();
 const failureCooldownUntil = new Map();
+const pendingPassiveShopUploads = new Map();
 let lastAutoSyncAt = null;
+
+const COOKIE_UPLOAD_ALLOWED_REASONS = new Set([
+  'request_cookie',
+  'ark_request_cookie',
+  'walle_request_cookie',
+  'buyer_message',
+]);
+
+const COOKIE_UPLOAD_BLOCKED_REASONS = new Set([
+  'startup',
+  'bridge_registered',
+  'ws_connected',
+  'interval',
+  'manual_status_check',
+]);
 
 function getLocalControlConfig() {
   const lc = config.localControlCenter || {};
@@ -239,11 +256,16 @@ function detectShopFromQianfanContext(pageInfo = {}, extra = {}) {
   };
 }
 
-async function collectCookiesFromBridge(bridge) {
-  const {
-    collectFullCookiesFromBridge,
-  } = require('./qianfan-full-cookie-collect');
-  const full = await collectFullCookiesFromBridge(bridge, { retryReload: false });
+async function collectCookiesFromBridge(bridge, options = {}) {
+  const { collectFullCookiesFromBridge } = require('./qianfan-full-cookie-collect');
+  const full = await collectFullCookiesFromBridge(bridge, {
+    retryReload: false,
+    requireRecentNetworkHeader: options.requireRecentNetworkHeader !== false,
+    recentNetworkHeaderMaxAgeMs: options.recentNetworkHeaderMaxAgeMs,
+    networkHeaderWaitMs: 0,
+    logDiagnostics: false,
+  });
+  if (full?.skipped) return full;
   return full?.cookie || '';
 }
 
@@ -407,8 +429,40 @@ async function runCookieCheckForShop(shopTitle, reason = 'manual', options = {})
   const bridge = findBridgeByShopTitle(shopTitle);
   if (!bridge) return { skipped: true, reason: 'no_bridge', shopName: shopTitle };
 
-  const collected = await collectQianfanCookies(bridge);
-  if (!collected) return { skipped: true, reason: 'no_cookie', shopName: shopTitle };
+  const collectedRaw = await collectCookiesFromBridge(bridge, {
+    requireRecentNetworkHeader: COOKIE_UPLOAD_ALLOWED_REASONS.has(reason),
+  });
+  if (collectedRaw?.skipped) {
+    return {
+      skipped: true,
+      reason: collectedRaw.reason,
+      shopName: shopTitle,
+      message: '暂未监听到新的千帆请求 Cookie，本次不上传',
+    };
+  }
+  const cookie = typeof collectedRaw === 'string' ? collectedRaw : '';
+  if (!cookie || cookie.length < 20) {
+    return { skipped: true, reason: 'no_cookie', shopName: shopTitle };
+  }
+
+  const shopCtx = detectShopFromQianfanContext(bridge.pageInfo || {}, {
+    shopTitle: bridge.shopTitle,
+    lastSeenUrl: bridge.pageInfo?.url,
+  });
+  const cookieHash = hashCookie(cookie);
+  const capturedAt = new Date().toISOString();
+  const collected = {
+    platform: 'qianfan',
+    shopName: shopCtx.shopName,
+    shopId: shopCtx.shopId,
+    accountName: shopCtx.accountName,
+    cookie,
+    cookieHash,
+    source: 'qianfan-relay-cdp',
+    lastSeenUrl: shopCtx.lastSeenUrl,
+    capturedAt,
+    matchedBy: shopCtx.matchedBy,
+  };
 
   const state = loadState();
   const resolvedKey = collected.shopName || shopTitle;
@@ -453,6 +507,7 @@ async function runCookieCheckForShop(shopTitle, reason = 'manual', options = {})
 
   if (result.ok) {
     clearFailure(resolvedKey);
+    clearBridgeCookieUploadDirty(bridge);
     lastAutoSyncAt = new Date().toISOString();
     const msg =
       result.data?.unchanged
@@ -480,10 +535,24 @@ async function runCookieCheckForShop(shopTitle, reason = 'manual', options = {})
   };
 }
 
-function triggerCookieCheck(shopTitle, reason = 'event') {
+function isCookieUploadReasonAllowed(reason) {
+  return COOKIE_UPLOAD_ALLOWED_REASONS.has(String(reason || ''));
+}
+
+function isCookieUploadReasonBlocked(reason) {
+  return COOKIE_UPLOAD_BLOCKED_REASONS.has(String(reason || ''));
+}
+
+function triggerCookieCheck(shopTitle, reason = 'event', options = {}) {
   if (!shopTitle) return Promise.resolve({ skipped: true });
   const cc = getControlConfig();
   if (!cc.enabled) return Promise.resolve({ skipped: true });
+  if (!options.force && isCookieUploadReasonBlocked(reason)) {
+    return Promise.resolve({ skipped: true, reason: 'passive_only', uploadReason: reason });
+  }
+  if (!options.force && !isCookieUploadReasonAllowed(reason)) {
+    return Promise.resolve({ skipped: true, reason: 'passive_only', uploadReason: reason });
+  }
 
   const key = String(shopTitle);
   const prev = pendingChecks.get(key);
@@ -615,16 +684,20 @@ function getAutoSyncStatus() {
 }
 
 function runStartupCookieSync() {
-  const shops = listRegisteredShops().filter((s) => s && !s.startsWith('__'));
-  for (const shop of shops) {
-    void triggerCookieCheck(shop, 'startup');
-  }
+  println('[Cookie] 启动时不主动上传 Cookie，等待千帆真实 Network 请求触发');
 }
 
 async function runFallbackCheckAll() {
   const shops = listRegisteredShops().filter((s) => s && !s.startsWith('__'));
   for (const shop of shops) {
-    await triggerCookieCheck(shop, 'interval');
+    const bridge = findBridgeByShopTitle(shop);
+    if (!bridge?.client) continue;
+    try {
+      const { ensureBridgeNetworkHeaderListeners } = require('./qianfan-full-cookie-collect');
+      ensureBridgeNetworkHeaderListeners(bridge.client, bridge);
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -640,7 +713,7 @@ function scheduleCookieRefresh() {
     void runFallbackCheckAll();
   }, intervalMs);
   if (typeof refreshTimer.unref === 'function') refreshTimer.unref();
-  println(`[Cookie] 已启动 ${cc.uploadIntervalMinutes || 10} 分钟兜底检查`);
+  println(`[Cookie] 已启动 ${cc.uploadIntervalMinutes || 10} 分钟兜底监听（不主动上传）`);
   void runStartupCookieSync();
 }
 
@@ -653,26 +726,70 @@ function onBridgeRegistered(bridge) {
   } catch {
     // ignore
   }
-  void triggerCookieCheck(shopTitle, 'bridge_registered');
 }
 
 function onWsConnected(shopTitle) {
-  void triggerCookieCheck(shopTitle, 'ws_connected');
+  const bridge = findBridgeByShopTitle(shopTitle);
+  if (bridge) bridge.wsConnectedAt = Date.now();
 }
 
 function onBuyerMessage(message) {
   const shopTitle = message?.shopTitle;
   if (!shopTitle) return;
+  const bridge = findBridgeByShopTitle(shopTitle);
+  if (!bridge?.cookieUploadDirty) return;
   void triggerCookieCheck(shopTitle, 'buyer_message');
 }
 
 function onAuthError(shopTitle) {
   loginRecoveredShops.add(String(shopTitle));
-  void triggerCookieCheck(shopTitle, 'auth_error');
 }
 
 function onShopSwitch(shopTitle) {
-  void triggerCookieCheck(shopTitle, 'shop_switch');
+  // 被动模式：切店不触发上传
+}
+
+function resolveCookieUploadReason(requestUrl, cookieHeader) {
+  const {
+    isArkRelatedRequestUrl,
+    cookieContainsArkToken,
+    cookieContainsWalleToken,
+    isXhsRelatedRequestUrl,
+  } = require('./qianfan-full-cookie-collect');
+  const url = String(requestUrl || '');
+  const raw = String(cookieHeader || '');
+  if (isArkRelatedRequestUrl(url) || cookieContainsArkToken(raw)) return 'ark_request_cookie';
+  if (url.includes('walle.xiaohongshu.com') || cookieContainsWalleToken(raw)) return 'walle_request_cookie';
+  if (isXhsRelatedRequestUrl(url)) return 'request_cookie';
+  return 'request_cookie';
+}
+
+function clearBridgeCookieUploadDirty(bridge) {
+  if (!bridge) return;
+  bridge.cookieUploadDirty = false;
+  bridge.cookieUploadDirtyAt = 0;
+  bridge.cookieUploadReason = '';
+  bridge.cookieUploadRequestUrl = '';
+}
+
+function schedulePassiveShopCookieUpload(shopTitle, reason) {
+  if (!shopTitle || !isCookieUploadReasonAllowed(reason)) return;
+  const key = String(shopTitle);
+  if (pendingPassiveShopUploads.has(key)) return;
+  const task = new Promise((resolve) => {
+    setTimeout(() => {
+      pendingPassiveShopUploads.delete(key);
+      try {
+        const { runShopCookieUploadForShop } = require('./shop-cookie-uploader');
+        void runShopCookieUploadForShop(shopTitle, reason)
+          .then(resolve)
+          .catch((err) => resolve({ ok: false, error: err.message || String(err) }));
+      } catch (err) {
+        resolve({ ok: false, error: err.message || String(err) });
+      }
+    }, COOKIE_UPLOAD_DEBOUNCE_MS);
+  });
+  pendingPassiveShopUploads.set(key, task);
 }
 
 function noteBridgeRequestCookie(bridge, cookieHeader, requestUrl = '') {
@@ -685,6 +802,7 @@ function noteBridgeRequestCookie(bridge, cookieHeader, requestUrl = '') {
     cookieContainsWalleToken,
     isArkRelatedRequestUrl,
     mergeCookiePartsPreferLongest,
+    extractCookieKeys,
   } = require('./qianfan-full-cookie-collect');
 
   if (!bridge.lastRequestCookie || raw.length >= bridge.lastRequestCookie.length) {
@@ -697,6 +815,10 @@ function noteBridgeRequestCookie(bridge, cookieHeader, requestUrl = '') {
     raw
   );
   bridge.lastNetworkHeaderCapturedAt = Date.now();
+  bridge.cookieUploadDirty = true;
+  bridge.cookieUploadDirtyAt = Date.now();
+  bridge.cookieUploadReason = 'network_request_cookie';
+  bridge.cookieUploadRequestUrl = url;
 
   if (isArkRelatedRequestUrl(url) || cookieContainsArkToken(raw)) {
     bridge.lastArkRequestCookie = mergeCookiePartsPreferLongest(bridge.lastArkRequestCookie || '', raw);
@@ -709,6 +831,23 @@ function noteBridgeRequestCookie(bridge, cookieHeader, requestUrl = '') {
     bridge.lastWalleRequestCookie = mergeCookiePartsPreferLongest(bridge.lastWalleRequestCookie || '', raw);
     bridge.lastWalleCapturedAt = Date.now();
   }
+
+  const uploadReason = resolveCookieUploadReason(url, raw);
+  const merged = mergeBridgeNetworkHeaderCookies(bridge);
+  const keys = extractCookieKeys(merged);
+  const hasArk = cookieContainsArkToken(merged);
+  const shopLabel = String(bridge.shopTitle || '店铺').trim();
+  println(
+    `[Cookie采集] 店铺=${shopLabel} 捕获真实请求 Cookie url=${url.slice(0, 90)} keys=${keys.slice(0, 12).join(',')} ark=${hasArk}，准备上传`
+  );
+
+  void triggerCookieCheck(shopLabel, uploadReason);
+  schedulePassiveShopCookieUpload(shopLabel, uploadReason);
+}
+
+function mergeBridgeNetworkHeaderCookies(bridge) {
+  const { mergeBridgeNetworkHeaderCookies: mergeFn } = require('./qianfan-full-cookie-collect');
+  return mergeFn(bridge);
 }
 
 module.exports = {
@@ -732,5 +871,8 @@ module.exports = {
   onAuthError,
   onShopSwitch,
   noteBridgeRequestCookie,
+  clearBridgeCookieUploadDirty,
+  isCookieUploadReasonAllowed,
+  isCookieUploadReasonBlocked,
   loadState,
 };

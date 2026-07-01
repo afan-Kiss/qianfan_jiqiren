@@ -1651,11 +1651,8 @@ async function registerQianfanWsBridge(pageInfo, client) {
     const cookieHeader = request?.headers?.Cookie || request?.headers?.cookie || '';
     if (cookieHeader) {
       try {
-        const { noteBridgeRequestCookie, triggerCookieCheck } = require('./qianfan-cookie-collector');
+        const { noteBridgeRequestCookie } = require('./qianfan-cookie-collector');
         noteBridgeRequestCookie(bridge, cookieHeader, String(request?.url || ''));
-        if (String(request?.url || '').includes('xiaohongshu.com')) {
-          void triggerCookieCheck(shopTitle, 'request_cookie');
-        }
       } catch {
         // ignore cookie collector errors
       }

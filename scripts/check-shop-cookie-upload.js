@@ -52,7 +52,7 @@ assert(uploaderSrc.includes('shop.cookie typeof='));
 assert(uploaderSrc.includes('skippedMissingArk'));
 assert(uploaderSrc.includes('READ_ONLY_COOKIE_COLLECT_OPTIONS'));
 assert(uploaderSrc.includes('readOnly: true'));
-assert(uploaderSrc.includes('allowPageMutation: false'));
+assert(uploaderSrc.includes('requireRecentNetworkHeader: true'));
 assert(apiSrc.includes('/api/shop-cookies/upload'));
 
 const xy = uploader.matchPageToShop('XY祥钰珠宝-工作台');

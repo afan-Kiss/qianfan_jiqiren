@@ -497,33 +497,55 @@ function logCookieDiagnostics(shopName, diag) {
     println(`[Cookie诊断] payload cookie containsArkToken=${diag.payloadContainsArkToken}`);
   }
   if (!diag.containsA1) {
-    println(`[Cookie诊断] ${shopName} 缺少 a1，未从 Network 请求头/CDP 合并到完整 Cookie`);
+    println(`[Cookie诊断] ${shopName} 缺少 a1，未从 Network 请求头合并到完整 Cookie`);
   } else if (!diag.containsArkToken) {
-    println(
-      `[Cookie诊断] ${shopName} 缺少 access-token-ark，请在该店千帆产生订单/ark 请求后再提交（本次只读采集，不跳页面）`
-    );
+    println(`[Cookie诊断] ${shopName} 缺少 access-token-ark，等待后续真实 ark 请求`);
   }
 }
 
+const DEFAULT_RECENT_NETWORK_HEADER_MAX_AGE_MS = 5 * 60 * 1000;
+
 async function collectFullCookiesFromBridge(bridge, options = {}) {
-  if (!bridge?.client) return null;
+  if (!bridge) return null;
   const readOnly = options.readOnly !== false;
-  const client = bridge.client;
+  const requireRecent = options.requireRecentNetworkHeader === true;
+  const recentMaxAge = Number(
+    options.recentNetworkHeaderMaxAgeMs ?? DEFAULT_RECENT_NETWORK_HEADER_MAX_AGE_MS
+  );
   const pageUrl = String(bridge.pageInfo?.url || bridge.lastSeenUrl || 'https://walle.xiaohongshu.com').trim();
   const pageTitle = String(bridge.pageInfo?.pageTitle || bridge.pageInfo?.title || bridge.shopTitle || '').trim();
-  const targetMeta = await getPageTargetMeta(client);
-  const waitMs = Number(options.networkHeaderWaitMs ?? DEFAULT_NETWORK_HEADER_WAIT_MS);
-
+  const shopLabel = String(bridge.shopTitle || pageTitle || '店铺').trim();
   const bridgeHeaders = mergeBridgeNetworkHeaderCookies(bridge);
+
+  if (requireRecent) {
+    const capturedAt = Number(bridge.lastNetworkHeaderCapturedAt || 0);
+    if (!capturedAt || !bridgeHeaders) {
+      println(`[Cookie采集] 店铺=${shopLabel} 未监听到新请求 Cookie，本次不上传`);
+      return { skipped: true, reason: 'no_network_cookie_seen', shopName: shopLabel };
+    }
+    if (Date.now() - capturedAt > recentMaxAge) {
+      println(`[Cookie采集] 店铺=${shopLabel} 未监听到新请求 Cookie，本次不上传`);
+      return { skipped: true, reason: 'network_cookie_stale', shopName: shopLabel };
+    }
+  }
+
+  if (!bridge.client) return null;
+
+  const client = bridge.client;
+  const targetMeta = await getPageTargetMeta(client);
+  const waitMs = requireRecent
+    ? 0
+    : Number(options.networkHeaderWaitMs ?? DEFAULT_NETWORK_HEADER_WAIT_MS);
+
   ensureBridgeNetworkHeaderListeners(client, bridge);
   const collector = createNetworkHeaderCookieCollector(client);
   await collector.enable();
 
-  if (readOnly) {
+  if (readOnly && waitMs > 0) {
     println(`[Cookie采集] readOnly=true，监听 Network 请求头 Cookie ${waitMs}ms（不刷新/不跳转页面）`);
   }
 
-  const waited = await collector.waitCollect(waitMs);
+  const waited = waitMs > 0 ? await collector.waitCollect(waitMs) : { cookie: '', stats: collector.stats() };
   const liveHeaders = waited.cookie;
   const networkHeaderStats = waited.stats;
 
@@ -532,13 +554,32 @@ async function collectFullCookiesFromBridge(bridge, options = {}) {
     jarFallback = await readJarCookiesFallback(client, pageUrl);
   }
 
-  const beforeParts = [bridgeHeaders, liveHeaders, jarFallback.cookie].filter(Boolean);
+  const headerParts = [bridgeHeaders, liveHeaders].filter(Boolean);
+  if (requireRecent && !headerParts.length) {
+    println(`[Cookie采集] 店铺=${shopLabel} 未监听到新请求 Cookie，本次不上传`);
+    return { skipped: true, reason: 'no_network_cookie_seen', shopName: shopLabel };
+  }
+
+  const beforeParts = requireRecent
+    ? [...headerParts, jarFallback.cookie].filter(Boolean)
+    : [bridgeHeaders, liveHeaders, jarFallback.cookie].filter(Boolean);
   const beforeMergeKeys = [...new Set(beforeParts.flatMap((p) => extractCookieKeys(p)))].sort();
   const cookie = mergeCookiePartsPreferLongest(...beforeParts);
   const afterMergeKeys = extractCookieKeys(cookie);
   const hasA1 = cookieContainsA1(cookie);
   const hasArk = cookieContainsArkToken(cookie);
   const hasWalle = cookieContainsWalleToken(cookie);
+
+  if (requireRecent && !mergeCookiePartsPreferLongest(...headerParts)) {
+    println(`[Cookie采集] 店铺=${shopLabel} 未监听到新请求 Cookie，本次不上传`);
+    return { skipped: true, reason: 'no_network_cookie_seen', shopName: shopLabel };
+  }
+
+  if (requireRecent && !hasArk && headerParts.length) {
+    println(
+      `[Cookie采集] 店铺=${shopLabel} 已捕获请求 Cookie，但缺 access-token-ark，本次不上传，等待后续真实 ark 请求`
+    );
+  }
 
   const diagnostics = {
     shopName: bridge.shopTitle || '',
@@ -612,6 +653,7 @@ module.exports = {
   WALLE_TOKEN_KEY,
   CRITICAL_COOKIE_NAMES,
   DEFAULT_NETWORK_HEADER_WAIT_MS,
+  DEFAULT_RECENT_NETWORK_HEADER_MAX_AGE_MS,
   cookieContainsA1,
   cookieContainsArkToken,
   cookieContainsWalleToken,

@@ -231,8 +231,39 @@ const READ_ONLY_COOKIE_COLLECT_OPTIONS = {
   allowPageMutation: false,
   retryReload: false,
   logDiagnostics: false,
-  networkHeaderWaitMs: 3000,
+  networkHeaderWaitMs: 0,
+  requireRecentNetworkHeader: true,
+  recentNetworkHeaderMaxAgeMs: 5 * 60 * 1000,
 };
+
+const PASSIVE_UPLOAD_BLOCKED_REASONS = new Set([
+  'startup',
+  'bridge_registered',
+  'ws_connected',
+  'interval',
+  'manual_status_check',
+]);
+
+const PASSIVE_UPLOAD_ALLOWED_REASONS = new Set([
+  'request_cookie',
+  'ark_request_cookie',
+  'walle_request_cookie',
+  'buyer_message',
+]);
+
+function findShopRowByTitle(shopTitle) {
+  const title = String(shopTitle || '').trim();
+  if (!title) return null;
+  for (const row of CANONICAL_SHOPS) {
+    if (row.shopName === title) return row;
+    if (row.matchNames.some((name) => title.includes(name) || name.includes(title))) return row;
+  }
+  return null;
+}
+
+function isPassiveUploadReasonBlocked(reason) {
+  return PASSIVE_UPLOAD_BLOCKED_REASONS.has(String(reason || ''));
+}
 
 function isXhsWorkbenchUrl(url) {
   const u = String(url || '').toLowerCase();
@@ -285,7 +316,26 @@ async function collectShopCookieFromBridge(bridge, shopRow, pageMeta = {}) {
   }
 
   const full = await collectFullCookiesFromBridge(bridge, READ_ONLY_COOKIE_COLLECT_OPTIONS);
-  if (!full?.cookie || full.cookie.length < 20) return null;
+  if (full?.skipped) {
+    println(`[Cookie采集] 店铺=${shopRow.shopName} 暂不上传：未监听到新的千帆请求 Cookie`);
+    return { skipped: true, reason: full.reason, shopName: shopRow.shopName };
+  }
+  if (!full?.cookie || full.cookie.length < 20) {
+    println(`[Cookie采集] 店铺=${shopRow.shopName} 未监听到新请求 Cookie，本次不上传`);
+    return { skipped: true, reason: 'no_network_cookie_seen', shopName: shopRow.shopName };
+  }
+  if (!full.hasArk) {
+    println(
+      `[Cookie采集] 店铺=${shopRow.shopName} 已捕获请求 Cookie，但缺 access-token-ark，本次不上传，等待后续真实 ark 请求`
+    );
+    return {
+      skipped: true,
+      reason: 'missing_ark',
+      shopName: shopRow.shopName,
+      hasA1: full.hasA1,
+      cookie: full.cookie,
+    };
+  }
 
   const shopCtx = detectShopFromQianfanContext(bridge.pageInfo || pageMeta || {}, {
     shopTitle: shopRow.shopName,
@@ -394,6 +444,10 @@ async function collectAllShopCookies(options = {}) {
 
   for (const row of CANONICAL_SHOPS) {
     const collected = await collectFromBridge(row);
+    if (collected?.skipped) {
+      collectedByKey[row.shopKey] = collected;
+      continue;
+    }
     if (collected?.cookie) {
       collectedByKey[row.shopKey] = collected;
       continue;
@@ -682,6 +736,14 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
 
   const url = `${uploadCfg.serverUrl}${uploadCfg.uploadPath}`;
   const body = buildUploadPayload(collectedByKey);
+  const submittedKeys = Object.keys(body.shops || {});
+  if (!submittedKeys.length) {
+    return {
+      ok: false,
+      reason: 'no_uploadable_shops',
+      message: '暂未监听到新的千帆请求 Cookie，本次不上传',
+    };
+  }
   let res;
   let data = {};
   try {
@@ -697,7 +759,7 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
     data = await res.json().catch(() => ({}));
     const brief = JSON.stringify(unwrapApiData(data)).slice(0, 500);
     println(`[Cookie上传] POST ${uploadCfg.uploadPath} -> ${res.status} ${brief}`);
-    logServerUploadDiagnostics(unwrapApiData(data), shopKeys);
+    logServerUploadDiagnostics(unwrapApiData(data), submittedKeys);
   } catch (err) {
     return {
       ok: false,
@@ -717,12 +779,12 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
     };
   }
 
-  const parsed = parseUploadResponse(data, shopKeys);
+  const parsed = parseUploadResponse(data, submittedKeys);
   let shopResults = parsed.shops;
 
   if (options.verifyStatus !== false) {
     try {
-      const verify = await verifyUploadStatus(uploadCfg, shopKeys, shopResults);
+      const verify = await verifyUploadStatus(uploadCfg, submittedKeys, shopResults);
       shopResults = verify.shops || shopResults;
     } catch (err) {
       println(`[Cookie上传] 状态确认失败：${err.message || err}`);
@@ -731,11 +793,12 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
 
   const success = shopResults.filter((s) => s.ok).length;
   const failed = shopResults.length - success;
-  const allOk = success === shopKeys.length;
+  const allOk = success === submittedKeys.length;
 
   if (success > 0) {
     const cache = loadUploadCookieCache();
-    for (const shopKey of shopKeys) {
+    const { clearBridgeCookieUploadDirty } = require('./qianfan-cookie-collector');
+    for (const shopKey of submittedKeys) {
       const collected = collectedByKey[shopKey];
       if (!collected?.cookie || !isOrderCapableCookie(collected.cookie)) continue;
       cache[shopKey] = {
@@ -743,6 +806,8 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
         savedAt: new Date().toISOString(),
         hasArk: true,
       };
+      const bridge = findExactBridgeForShop({ shopKey, shopName: collected.shopName });
+      if (bridge) clearBridgeCookieUploadDirty(bridge);
     }
     saveUploadCookieCache(cache);
   }
@@ -751,15 +816,16 @@ async function uploadShopCookiesBatch(collectedByKey, options = {}) {
     ok: allOk,
     reason: allOk ? 'ok' : success > 0 ? 'partial_failed' : 'failed',
     message: allOk
-      ? `四店 Cookie 已全部提交（${success}/${shopKeys.length}）`
+      ? `四店 Cookie 已全部提交（${success}/${submittedKeys.length}）`
       : success > 0
-        ? `部分店铺提交成功（${success}/${shopKeys.length}）`
-        : `Cookie 提交失败（0/${shopKeys.length}）`,
+        ? `部分店铺提交成功（${success}/${submittedKeys.length}）`
+        : `Cookie 提交失败（0/${submittedKeys.length}）`,
     httpStatus: res.status,
     data,
     shops: shopResults,
     success,
     failed,
+    submittedKeys,
   };
 }
 
@@ -798,6 +864,7 @@ function filterUploadableCookies(collectedByKey) {
   const skippedInvalid = [];
   for (const [shopKey, collected] of Object.entries(collectedByKey || {})) {
     const shopName = shopDisplayName(shopKey);
+    if (collected?.skipped) continue;
     if (!isValidCookieString(collected.cookie)) {
       skippedInvalid.push(shopName);
       println(`[Cookie上传] ${shopName}：cookie 无效（typeof=${typeof collected.cookie}），跳过上传`);
@@ -813,7 +880,7 @@ function filterUploadableCookies(collectedByKey) {
     if (!hasArk) {
       skippedMissingArk.push(shopName);
       println(
-        `[Cookie上传] ${shopName}：缺 access-token-ark，本次不上传，避免覆盖服务端可同步 Cookie；请打开该店订单/数据页面后手动提交`
+        `[Cookie上传] ${shopName}：缺 access-token-ark，本次不上传，等待后续真实 ark 请求`
       );
       continue;
     }
@@ -844,6 +911,74 @@ function summarizeUploadMessage(result) {
   return `Cookie 提交失败：${failShops.join('、') || result.message}`;
 }
 
+async function runShopCookieUploadForShop(shopTitle, reason = 'request_cookie', options = {}) {
+  const uploadCfg = getShopCookieUploadConfig();
+  if (!uploadCfg.enabled) {
+    return { ok: false, skipped: true, message: '四店 Cookie 上传未启用' };
+  }
+  if (!options.force && isPassiveUploadReasonBlocked(reason)) {
+    return {
+      ok: false,
+      skipped: true,
+      reason,
+      message: '暂未监听到新的千帆请求 Cookie，本次不上传',
+    };
+  }
+  if (!options.force && !PASSIVE_UPLOAD_ALLOWED_REASONS.has(reason)) {
+    return { ok: false, skipped: true, reason: 'passive_only', message: '非被动触发来源，不上传' };
+  }
+
+  const shopRow = findShopRowByTitle(shopTitle);
+  if (!shopRow) {
+    return { ok: false, skipped: true, reason: 'unknown_shop', shopName: shopTitle };
+  }
+
+  const bridge = findExactBridgeForShop(shopRow);
+  if (!bridge) {
+    return { ok: false, skipped: true, reason: 'no_bridge', shopName: shopRow.shopName };
+  }
+  if (reason === 'buyer_message' && !bridge.cookieUploadDirty && !options.force) {
+    return { ok: false, skipped: true, reason: 'no_new_network_cookie', shopName: shopRow.shopName };
+  }
+
+  const collected = await collectShopCookieFromBridge(bridge, shopRow);
+  if (collected?.skipped) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: collected.reason,
+      shopName: shopRow.shopName,
+      message:
+        collected.reason === 'missing_ark'
+          ? '已捕获请求 Cookie，但缺 access-token-ark，本次不上传'
+          : '暂未监听到新的千帆请求 Cookie，本次不上传',
+    };
+  }
+  if (!collected?.cookie) {
+    return { ok: false, skipped: true, reason: 'no_cookie', shopName: shopRow.shopName };
+  }
+
+  const { uploadable, skippedMissingArk } = filterUploadableCookies({ [shopRow.shopKey]: collected });
+  if (!Object.keys(uploadable).length) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: skippedMissingArk.length ? 'missing_ark' : 'not_uploadable',
+      shopName: shopRow.shopName,
+      message: skippedMissingArk.length
+        ? '已捕获请求 Cookie，但缺 access-token-ark，本次不上传'
+        : '暂未监听到新的千帆请求 Cookie，本次不上传',
+    };
+  }
+
+  println(`[Cookie上传] 准备提交 1 个店铺 Cookie（${shopRow.shopName}，reason=${reason}）`);
+  try {
+    return await uploadShopCookiesBatch(uploadable, { verifyStatus: options.verifyStatus !== false });
+  } catch (err) {
+    return { ok: false, message: err.message || String(err), shopName: shopRow.shopName };
+  }
+}
+
 async function runShopCookieUploadAll(reason = 'manual', options = {}) {
   const uploadCfg = getShopCookieUploadConfig();
   if (!uploadCfg.enabled) {
@@ -858,6 +993,19 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
     };
   }
 
+  if (!options.force && isPassiveUploadReasonBlocked(reason)) {
+    return {
+      ok: false,
+      skipped: true,
+      reason,
+      message: '暂未监听到新的千帆请求 Cookie，本次不上传',
+      shops: [],
+      success: 0,
+      failed: 0,
+      total: CANONICAL_SHOPS.length,
+    };
+  }
+
   logUploadConfig(uploadCfg);
 
   const { collectedByKey, missing, incomplete, count } = await collectAllShopCookies({
@@ -867,23 +1015,19 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
   const incompleteResults = buildIncompleteShopResults(incomplete || [], collectedByKey);
   const { uploadable, skippedNoA1, skippedMissingArk, skippedInvalid } = filterUploadableCookies(collectedByKey);
   const missingArkResults = buildMissingArkShopResults(skippedMissingArk, collectedByKey);
+  const passiveSkippedCount = Object.values(collectedByKey).filter((c) => c?.skipped).length;
 
   if (!Object.keys(uploadable).length) {
     const allFailed = [...missingResults, ...incompleteResults, ...missingArkResults];
-    let message = '暂未采集到任何店铺 Cookie，请确认千帆客服台已打开并登录';
-    if (count > 0) {
-      if (skippedMissingArk.length && !incomplete.length && !missing.length) {
-        message =
-          '已读取到 Cookie，但缺少订单同步 token，未上传；请打开各店订单/数据页面后重新提交';
-      } else if (incomplete.length) {
-        message = `采集到 ${count} 店 Cookie，但均缺少 a1，未上传。请打开/刷新各店商家后台后重试`;
-      } else {
-        message =
-          '已读取到 Cookie，但缺少订单同步 token 或校验未通过，未上传；请打开各店订单/数据页面后重新提交';
-      }
+    let message = '暂未监听到新的千帆请求 Cookie，本次不上传';
+    if (count > 0 && skippedMissingArk.length && !incomplete.length && !missing.length) {
+      message = '已捕获请求 Cookie，但缺少订单同步 token，本次不上传';
+    } else if (incomplete.length) {
+      message = `采集到 ${count} 店 Cookie，但均缺少 a1，未上传`;
     }
     return {
       ok: false,
+      reason: 'no_recent_network_cookie',
       message,
       shops: allFailed,
       success: 0,
@@ -894,7 +1038,7 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
       skippedNoA1,
       skippedMissingArk,
       skippedInvalid,
-      reason,
+      passiveSkippedCount,
     };
   }
 
@@ -942,27 +1086,36 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
   };
 }
 
-function triggerShopCookieUploadOnBuyerMessage() {
+function triggerShopCookieUploadOnBuyerMessage(messageOrTitle) {
   const uploadCfg = getShopCookieUploadConfig();
   if (!uploadCfg.enabled) {
     return Promise.resolve({ ok: false, skipped: true, message: 'skipped' });
   }
+  const shopTitle =
+    typeof messageOrTitle === 'string' ? messageOrTitle : messageOrTitle?.shopTitle;
+  if (!shopTitle) return Promise.resolve({ ok: false, skipped: true, reason: 'no_shop' });
+
+  const bridge = findBridgeByShopTitle(shopTitle);
+  if (!bridge?.cookieUploadDirty) {
+    return Promise.resolve({ ok: false, skipped: true, reason: 'no_new_network_cookie' });
+  }
+
   if (pendingBuyerUpload) return pendingBuyerUpload;
 
   pendingBuyerUpload = new Promise((resolve) => {
     setTimeout(() => {
       pendingBuyerUpload = null;
-      void runShopCookieUploadAll('buyer_message', { verifyStatus: true })
+      void runShopCookieUploadForShop(shopTitle, 'buyer_message', { verifyStatus: true })
         .then((result) => {
           if (result.ok) {
-            println(`[Cookie上传] 买家消息触发完成 ${result.success}/${CANONICAL_SHOPS.length}`);
+            println(`[Cookie上传] 买家消息触发完成 ${shopTitle}`);
           } else if (!result.skipped) {
             println(`[Cookie上传] 买家消息触发失败：${result.message}`);
           }
           resolve(result);
         })
         .catch((err) => {
-          resolve({ ok: false, message: err.message || String(err), shops: [], success: 0, failed: 4 });
+          resolve({ ok: false, message: err.message || String(err), shops: [], success: 0, failed: 1 });
         });
     }, BUYER_MESSAGE_DEBOUNCE_MS);
   });
@@ -977,6 +1130,7 @@ module.exports = {
   collectAllShopCookies,
   uploadShopCookiesBatch,
   runShopCookieUploadAll,
+  runShopCookieUploadForShop,
   triggerShopCookieUploadOnBuyerMessage,
   summarizeUploadMessage,
   fetchShopCookieStatus,
