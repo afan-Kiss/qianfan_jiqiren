@@ -68,14 +68,21 @@
     "check:longrun-suite": "npm run check:longrun-smoke && npm run check:longrun-idempotency && npm run check:longrun-chaos && npm run check:longrun-leaks",
     "check:full": "npm run check:quick && npm run check:chaos-suite && npm run check:longrun-suite",
     "check:timed": "node scripts/run-checks-with-timing.js",
-    "check": "npm run check:quick"
+    "check": "npm run check:quick",
+    "qf:protocol:probe": "node scripts/probe-qianfan-protocol.js",
+    "qf:protocol:listen": "node scripts/test-qianfan-protocol-listen.js",
+    "qf:protocol:list": "node scripts/test-qianfan-protocol-message-list.js",
+    "qf:protocol:send-text": "node scripts/test-qianfan-protocol-send-text.js",
+    "qf:protocol:send-image": "node scripts/test-qianfan-protocol-send-image.js",
+    "qf:protocol:test": "node scripts/run-qianfan-protocol-all-tests.js"
   },
   "engines": {
     "node": ">=18"
   },
   "license": "MIT",
   "dependencies": {
-    "chrome-remote-interface": "^0.33.2"
+    "chrome-remote-interface": "^0.33.2",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "electron": "^31.0.0",

@@ -1,0 +1,48 @@
+[
+  {
+    "shopTitle": "测试店铺名称",
+    "enabled": true,
+    "cookie": "这里放我手动抓取的完整 Cookie",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "origin": "https://walle.xiaohongshu.com",
+    "referer": "https://walle.xiaohongshu.com/",
+    "ws": {
+      "url": "wss://example.xiaohongshu.com/impaas/longlink?token=REPLACE_ME",
+      "headers": {
+        "Cookie": "",
+        "User-Agent": "",
+        "Origin": ""
+      }
+    },
+    "httpTemplates": {
+      "messageList": {
+        "url": "https://walle.xiaohongshu.com/api/impaas/message/user/list",
+        "method": "POST",
+        "headers": {},
+        "body": {
+          "appCid": "REPLACE_APP_CID",
+          "limit": 20
+        }
+      },
+      "imageUpload": {
+        "url": "",
+        "method": "POST",
+        "headers": {},
+        "fieldName": "file",
+        "extraFields": {}
+      }
+    },
+    "manualSamples": {
+      "textSendPayload": {},
+      "imageSendPayload": {},
+      "imageUploadResponse": {}
+    },
+    "testTarget": {
+      "buyerNick": "饭饭",
+      "appCid": "",
+      "receiverAppUids": [],
+      "text": "纯协议文字测试",
+      "imagePath": "test-assets/qianfan-test-image.jpg"
+    }
+  }
+]

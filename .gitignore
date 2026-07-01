@@ -17,6 +17,7 @@ backup-before-restore-*/
 .env
 .env.*
 config.wxbot-new.json
+config/qianfan-protocol-shops.local.json
 **/credentials*.json
 
 # large local binaries (install separately)
