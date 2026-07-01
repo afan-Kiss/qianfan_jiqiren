@@ -76,7 +76,8 @@
     "qf:protocol:send-image": "node scripts/test-qianfan-protocol-send-image.js",
     "qf:protocol:test": "node scripts/run-qianfan-protocol-all-tests.js",
     "qf:protocol:export-live": "node scripts/export-qianfan-live-protocol-context.js",
-    "qf:protocol:bootstrap-live": "node scripts/export-qianfan-live-protocol-context.js --write-local --run-probe"
+    "qf:protocol:bootstrap-live": "node scripts/export-qianfan-live-protocol-context.js --write-local --run-probe",
+    "qf:protocol:auto": "node scripts/run-qianfan-protocol-auto.js"
   },
   "engines": {
     "node": ">=18"

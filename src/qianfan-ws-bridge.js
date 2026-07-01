@@ -2541,6 +2541,11 @@ function buildQianfanProtocolSnapshot(shopTitle, options = {}) {
     }
   }
 
+  const allWsUrls = [];
+  for (const [requestId, url] of bridge.wsUrls?.entries?.() || []) {
+    allWsUrls.push({ requestId, url: String(url || '') });
+  }
+
   return {
     ok: true,
     shopTitle: bridge.shopTitle,
@@ -2560,6 +2565,7 @@ function buildQianfanProtocolSnapshot(shopTitle, options = {}) {
     },
     wsCandidates,
     wsUrlFromManualSend,
+    allWsUrls,
     wsHandshake: handshake,
     recentWsHeartbeatFrames: [...(bridge.recentWsHeartbeatFrames || [])],
     httpTemplates: serializeHttpTemplates(bridge.httpTemplates),
