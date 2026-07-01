@@ -118,13 +118,41 @@ async function fetchJson(url, timeoutMs = 8000) {
 
 async function fetchLiveShopsViaApi() {
   const base = getLiveApiBaseUrl();
-  const { ok, status, json } = await fetchJson(`${base}/api/qianfan/protocol/live-shops`);
-  if (!ok) {
-    const err = new Error(json?.message || `diagnostic_api_unavailable HTTP ${status}`);
-    err.code = 'diagnostic_api_unavailable';
-    throw err;
+  let status = 0;
+  let json = {};
+  try {
+    const res = await fetchJson(`${base}/api/qianfan/protocol/live-shops`);
+    status = res.status;
+    json = res.json;
+    if (res.ok) return json;
+  } catch (err) {
+    const health = await fetchJson(`${base}/api/health`).catch(() => null);
+    if (health?.ok && health.json?.ok) {
+      const stale = new Error(
+        '本地 API 已运行，但缺少 /api/qianfan/protocol/* 接口。请关闭机器人，重新 npm run build 后启动最新版 EXE（或 npm start）。'
+      );
+      stale.code = 'diagnostic_api_stale_build';
+      throw stale;
+    }
+    const unavailable = new Error(err.message || 'diagnostic_api_unavailable');
+    unavailable.code = 'diagnostic_api_unavailable';
+    throw unavailable;
   }
-  return json;
+
+  if (status === 404) {
+    const health = await fetchJson(`${base}/api/health`).catch(() => null);
+    if (health?.ok && health.json?.ok) {
+      const stale = new Error(
+        '本地 API 已运行，但缺少 /api/qianfan/protocol/* 接口。请关闭机器人，重新 npm run build 后启动最新版 EXE（或 npm start）。'
+      );
+      stale.code = 'diagnostic_api_stale_build';
+      throw stale;
+    }
+  }
+
+  const err = new Error(json?.message || `diagnostic_api_unavailable HTTP ${status}`);
+  err.code = 'diagnostic_api_unavailable';
+  throw err;
 }
 
 async function fetchLiveSnapshotViaApi(shopTitle) {

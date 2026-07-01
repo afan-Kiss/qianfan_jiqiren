@@ -84,7 +84,12 @@ async function main() {
     console.log(`[export-live] mode=${listed.mode} api=${getLiveApiBaseUrl()}`);
     if (!listed.ok) {
       console.error('[export-live] 无法读取 live bridge:', listed.error || 'unavailable');
-      console.error('请确认千帆机器人已启动且本地 API 可用。');
+      if (listed.error === 'diagnostic_api_stale_build') {
+        console.error('当前运行的是旧版机器人进程，不含 protocol 诊断接口。');
+        console.error('请：1) 完全关闭旧 EXE  2) npm run build  3) 启动 dist\\win-unpacked\\千帆客服台机器人.exe');
+      } else {
+        console.error('请确认千帆机器人已启动且本地 API 可用（http://127.0.0.1:9323/api/health）。');
+      }
       process.exit(1);
     }
     console.log(`[export-live] 已注册店铺数: ${listed.shops.length}`);
@@ -109,8 +114,10 @@ async function main() {
     const err = loaded.error || loaded.snapshot?.error || 'bridge_not_found';
     console.error(`[export-live] 读取 snapshot 失败: ${err}`);
     if (err === 'bridge_not_found') console.error('请确认店铺页已打开且 Bridge 已注册。');
-    if (err === 'diagnostic_api_unavailable' || err === 'process_memory_unreachable') {
-      console.error('请确认机器人进程已启动（本地 API 127.0.0.1）。');
+    if (err === 'diagnostic_api_stale_build') {
+      console.error('请关闭旧机器人，npm run build 后启动最新版 EXE。');
+    } else if (err === 'diagnostic_api_unavailable' || err === 'process_memory_unreachable') {
+      console.error('请确认机器人进程已启动（本地 API 127.0.0.1:9323/api/health）。');
     }
     process.exit(1);
   }
