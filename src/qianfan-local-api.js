@@ -117,6 +117,50 @@ async function startQianfanLocalApi(options = {}) {
         return;
       }
 
+      if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/live-shops') {
+        try {
+          const {
+            getAllQianfanBridges,
+            buildQianfanProtocolSnapshot,
+          } = require('./qianfan-ws-bridge');
+          const { summarizeLiveShopRow } = require('./protocol/qianfan-live-context-extractor');
+          const shops = getAllQianfanBridges().map((bridge) =>
+            summarizeLiveShopRow(buildQianfanProtocolSnapshot(bridge.shopTitle))
+          );
+          sendJson(res, 200, { ok: true, shops });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || 'live-shops failed' });
+        }
+        return;
+      }
+
+      if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/snapshot') {
+        try {
+          const urlObj = new URL(req.url, 'http://127.0.0.1');
+          const shopTitle = String(urlObj.searchParams.get('shopTitle') || '').trim();
+          if (!shopTitle) {
+            sendJson(res, 400, { ok: false, error: 'missing shopTitle' });
+            return;
+          }
+          const { buildQianfanProtocolSnapshot } = require('./qianfan-ws-bridge');
+          const { summarizeCookie } = require('./protocol/qianfan-protocol-config');
+          const snapshot = buildQianfanProtocolSnapshot(shopTitle);
+          if (!snapshot.ok) {
+            sendJson(res, 404, { ok: false, error: snapshot.error || 'bridge_not_found', snapshot });
+            return;
+          }
+          const cookie = String(snapshot.cookieSources?.mergedNetworkHeaderCookie || '');
+          sendJson(res, 200, {
+            ok: true,
+            snapshot,
+            cookieSummary: summarizeCookie(cookie),
+          });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || 'snapshot failed' });
+        }
+        return;
+      }
+
       sendJson(res, 404, { ok: false, message: 'not found' });
     })();
   });

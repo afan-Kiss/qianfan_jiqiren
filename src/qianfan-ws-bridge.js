@@ -77,6 +77,8 @@ const SEND_PAYLOAD_BUDGET_MS = 28000;
 const ACK_TIMEOUT_MS = 8000;
 const ECHO_VERIFY_MS = 10000;
 const UI_SYNC_TIMEOUT_MS = 12000;
+const WS_PROTOCOL_EXCLUDE_RE = /hot-update|vite|sockjs|hmr|analytics|track|log|sentry/i;
+const MAX_RECENT_WS_HEARTBEAT_FRAMES = 40;
 
 const WS_HOOK_SCRIPT = `(function(){
   window.__qfImpaasSockets = (window.__qfImpaasSockets || []).filter(function(w){ return w && w.readyState === 1; });
@@ -311,6 +313,53 @@ function captureManualSend(bridge, parsed, requestId) {
   );
 }
 
+function captureManualImageSend(bridge, parsed, requestId) {
+  const body = parsed?.body || {};
+  const appCid = String(body.appCid || '').trim();
+  if (!appCid) return;
+
+  const sample = {
+    shopTitle: normalizeShopKey(bridge.shopTitle),
+    requestId,
+    appCid,
+    receiverAppUids: body.receiverAppUids,
+    payload: parsed,
+    bodySummary: summarizeBody(body),
+    capturedAt: Date.now(),
+  };
+
+  bridge.lastManualImageSendByAppCid.set(appCid, sample);
+  bridge.lastManualImageSendAny = sample;
+  writeManualSendSample({ ...sample, kind: 'image' });
+  println(
+    `[千帆] 已捕获手动图片发送 WS：店铺=${sample.shopTitle} appCid=${appCid} requestId=${requestId}`
+  );
+}
+
+function isRelevantProtocolWsUrl(url) {
+  const u = String(url || '');
+  if (!u || WS_PROTOCOL_EXCLUDE_RE.test(u)) return false;
+  return /longlink|impaas|walle|xiaohongshu|edith|qianfan/i.test(u);
+}
+
+function noteWsHeartbeatFrame(bridge, payload, direction, requestId) {
+  if (!bridge) return;
+  const raw = String(payload || '').trim();
+  if (!raw) return;
+  const lower = raw.toLowerCase();
+  if (!/(^|\b)(ping|pong|heartbeat|keepalive)(|\b)/i.test(lower) && raw.length > 64) return;
+  if (!Array.isArray(bridge.recentWsHeartbeatFrames)) bridge.recentWsHeartbeatFrames = [];
+  bridge.recentWsHeartbeatFrames.push({
+    at: Date.now(),
+    direction,
+    requestId,
+    preview: raw.slice(0, 200),
+  });
+  if (bridge.recentWsHeartbeatFrames.length > MAX_RECENT_WS_HEARTBEAT_FRAMES) {
+    bridge.recentWsHeartbeatFrames.shift();
+  }
+}
+
 function getRecentManualSendSample(bridge, appCid) {
   if (!bridge) return null;
   const cid = String(appCid || '').trim();
@@ -389,7 +438,9 @@ function noteWsFrame(bridge, requestId, parsed, direction) {
   if (direction === 'sent' && action === '/message/send' && Number(hdr.type) === 3 && serviceId === 'impaas.oi') {
     sess.seenMessageSend = true;
     sess.lastManualSendAt = Date.now();
-    captureManualSend(bridge, parsed, requestId);
+    const contentType = Number(body.contentInfo?.contentType);
+    if (contentType === 1) captureManualSend(bridge, parsed, requestId);
+    else captureManualImageSend(bridge, parsed, requestId);
   }
 
   if (action === '/message/read/from/one') {
@@ -1617,7 +1668,13 @@ async function registerQianfanWsBridge(pageInfo, client) {
     wsUrls: new Map(),
     lastManualSendByAppCid: prev?.lastManualSendByAppCid || new Map(),
     lastManualSendAny: prev?.lastManualSendAny || null,
+    lastManualImageSendByAppCid: prev?.lastManualImageSendByAppCid || new Map(),
+    lastManualImageSendAny: prev?.lastManualImageSendAny || null,
     lastMessageListRequest: prev?.lastMessageListRequest || null,
+    wsHandshakeHeaders: prev?.wsHandshakeHeaders || new Map(),
+    wsHandshakeResponses: prev?.wsHandshakeResponses || new Map(),
+    recentWsHeartbeatFrames: prev?.recentWsHeartbeatFrames || [],
+    lastSeenUrl: prev?.lastSeenUrl || String(pageInfo?.url || pageInfo?.lastSeenUrl || ''),
   };
 
   const { Network } = client;
@@ -1648,6 +1705,8 @@ async function registerQianfanWsBridge(pageInfo, client) {
 
   Network.requestWillBeSent(({ request }) => {
     captureHttpTemplate(bridge, request);
+    const reqUrl = String(request?.url || '');
+    if (reqUrl) bridge.lastSeenUrl = reqUrl;
     const cookieHeader = request?.headers?.Cookie || request?.headers?.cookie || '';
     if (cookieHeader) {
       try {
@@ -1671,15 +1730,62 @@ async function registerQianfanWsBridge(pageInfo, client) {
     }
   });
 
+  try {
+    Network.webSocketWillSendHandshakeRequest(({ requestId, request }) => {
+      try {
+        const url = String(bridge.wsUrls.get(requestId) || request?.url || '');
+        if (!isRelevantProtocolWsUrl(url)) return;
+        bridge.wsHandshakeHeaders.set(requestId, {
+          requestId,
+          url,
+          requestHeaders: { ...(request?.headers || {}) },
+          capturedAt: Date.now(),
+        });
+      } catch {
+        // ignore handshake capture errors
+      }
+    });
+  } catch {
+    // CDP may not expose webSocketWillSendHandshakeRequest
+  }
+
+  try {
+    Network.webSocketHandshakeResponseReceived(({ requestId, response }) => {
+      try {
+        const url = String(bridge.wsUrls.get(requestId) || '');
+        if (!isRelevantProtocolWsUrl(url)) return;
+        bridge.wsHandshakeResponses.set(requestId, {
+          requestId,
+          url,
+          responseHeaders: { ...(response?.headers || {}) },
+          status: Number(response?.status || 0),
+          capturedAt: Date.now(),
+        });
+      } catch {
+        // ignore handshake capture errors
+      }
+    });
+  } catch {
+    // CDP may not expose webSocketHandshakeResponseReceived
+  }
+
   Network.webSocketFrameReceived((params) => {
     const payload = params.response?.payloadData;
-    if (!payload || payload === 'ping' || payload === 'pong') return;
+    if (!payload) return;
+    if (payload === 'ping' || payload === 'pong') {
+      noteWsHeartbeatFrame(bridge, payload, 'received', params.requestId);
+      return;
+    }
     dispatchFrameListeners(bridge, payload, 'received', params.requestId);
   });
 
   Network.webSocketFrameSent((params) => {
     const payload = params.response?.payloadData;
     if (!payload) return;
+    if (payload === 'ping' || payload === 'pong') {
+      noteWsHeartbeatFrame(bridge, payload, 'sent', params.requestId);
+      return;
+    }
     dispatchFrameListeners(bridge, payload, 'sent', params.requestId);
   });
 
@@ -2146,6 +2252,194 @@ function listRegisteredShops() {
   return [...bridges.keys()];
 }
 
+function getAllQianfanBridges() {
+  const seen = new Set();
+  const out = [];
+  for (const bridge of bridges.values()) {
+    if (!bridge || seen.has(bridge)) continue;
+    seen.add(bridge);
+    out.push(bridge);
+  }
+  return out;
+}
+
+function getQianfanBridgeByShopTitle(shopTitle) {
+  return findBridgeByShopTitle(shopTitle);
+}
+
+function serializeManualSendMap(map) {
+  const out = {};
+  if (!map || typeof map.entries !== 'function') return out;
+  for (const [appCid, sample] of map.entries()) {
+    out[appCid] = {
+      appCid: sample?.appCid || appCid,
+      requestId: sample?.requestId || '',
+      receiverAppUids: sample?.receiverAppUids || [],
+      capturedAt: sample?.capturedAt || 0,
+      bodySummary: sample?.bodySummary || null,
+      payload: sample?.payload || null,
+    };
+  }
+  return out;
+}
+
+function serializeHttpTemplates(httpTemplates) {
+  const out = {};
+  if (!httpTemplates || typeof httpTemplates.entries !== 'function') return out;
+  for (const [pathKey, tpl] of httpTemplates.entries()) {
+    out[pathKey] = {
+      pathKey: tpl?.pathKey || pathKey,
+      url: tpl?.url || '',
+      method: tpl?.method || 'POST',
+      headers: tpl?.headers || {},
+      bodyTemplate: tpl?.bodyTemplate || '',
+    };
+  }
+  return out;
+}
+
+function serializeWsCandidates(bridge) {
+  const candidates = [];
+  for (const sess of bridge.wsSessions?.values() || []) {
+    const url = String(sess.url || bridge.wsUrls.get(sess.requestId) || '');
+    if (!url || !isRelevantProtocolWsUrl(url)) continue;
+    let score = 0;
+    if (/longlink/i.test(url)) score += 100;
+    if (/impaas/i.test(url)) score += 90;
+    if (sess.seenMessageSend) score += 60;
+    if (sess.seenBuyerSync) score += 50;
+    if (sess.seenImpaasTraffic) score += 30;
+    if (WS_PROTOCOL_EXCLUDE_RE.test(url)) score -= 100;
+    candidates.push({
+      requestId: sess.requestId,
+      url,
+      score,
+      lastSeq: sess.lastSeq || 0,
+      lastActivityAt: sess.lastActivityAt || 0,
+      seenMessageSend: Boolean(sess.seenMessageSend),
+      seenReadFromOne: Boolean(sess.seenReadFromOne),
+      seenBuyerSync: Boolean(sess.seenBuyerSync),
+      seenImpaasTraffic: Boolean(sess.seenImpaasTraffic),
+      appCids: [...(sess.appCids || [])],
+    });
+  }
+  candidates.sort(
+    (a, b) =>
+      b.score - a.score ||
+      b.lastActivityAt - a.lastActivityAt ||
+      b.lastSeq - a.lastSeq
+  );
+  return candidates;
+}
+
+function serializeHandshakeMaps(bridge) {
+  const headers = [];
+  for (const row of bridge.wsHandshakeHeaders?.values() || []) headers.push(row);
+  const responses = [];
+  for (const row of bridge.wsHandshakeResponses?.values() || []) responses.push(row);
+  return { headers, responses };
+}
+
+function listSessionContextsForShop(shopTitle) {
+  const shopKey = normalizeShopKey(shopTitle);
+  if (!shopKey) return [];
+  try {
+    const { readJson } = require('./shared/safe-json-store');
+    const { resolveDataDir } = require('./shared/app-root');
+    const pathMod = require('path');
+    const file = pathMod.join(resolveDataDir(), 'qianfan-session-context.json');
+    const all = readJson(file, {});
+    return Object.entries(all)
+      .filter(([key]) => key.startsWith(`${shopKey}::`))
+      .map(([, ctx]) => ctx)
+      .sort((a, b) => Number(b?.updatedAt || b?.lastBuyerMsgAt || 0) - Number(a?.updatedAt || a?.lastBuyerMsgAt || 0));
+  } catch {
+    return [];
+  }
+}
+
+function listReceiverCacheForShop(shopTitle) {
+  const shopKey = normalizeShopKey(shopTitle);
+  if (!shopKey) return [];
+  try {
+    const { readJson } = require('./shared/safe-json-store');
+    const { resolveDataDir } = require('./shared/app-root');
+    const pathMod = require('path');
+    const file = pathMod.join(resolveDataDir(), 'app-cid-receivers.json');
+    const all = readJson(file, {});
+    return Object.entries(all)
+      .filter(([key]) => key.startsWith(`${shopKey}::`))
+      .map(([key, uids]) => ({ key, receiverAppUids: Array.isArray(uids) ? uids : [] }));
+  } catch {
+    return [];
+  }
+}
+
+function buildQianfanProtocolSnapshot(shopTitle, options = {}) {
+  const bridge = findBridgeByShopTitle(shopTitle);
+  const normalizedShopTitle = normalizeShopKey(shopTitle);
+  if (!bridge) {
+    return {
+      ok: false,
+      error: 'bridge_not_found',
+      shopTitle: String(shopTitle || ''),
+      normalizedShopTitle,
+    };
+  }
+
+  let mergedCookie = '';
+  try {
+    const { mergeBridgeNetworkHeaderCookies } = require('./qianfan-full-cookie-collect');
+    mergedCookie = mergeBridgeNetworkHeaderCookies(bridge);
+  } catch {
+    mergedCookie = String(bridge.mergedNetworkHeaderCookie || bridge.lastRequestCookie || '').trim();
+  }
+
+  const wsCandidates = serializeWsCandidates(bridge);
+  const handshake = serializeHandshakeMaps(bridge);
+  const sessionContexts = listSessionContextsForShop(normalizedShopTitle);
+  const receiverCache = listReceiverCacheForShop(normalizedShopTitle);
+
+  return {
+    ok: true,
+    shopTitle: bridge.shopTitle,
+    normalizedShopTitle,
+    connectedAt: bridge.connectedAt || 0,
+    cdpReady: isBridgeCdpReady(bridge),
+    pageInfo: bridge.pageInfo || null,
+    lastSeenUrl: bridge.lastSeenUrl || '',
+    lastSeq: bridge.lastSeq || 0,
+    lastWsFrameAt: bridge.lastWsFrameAt || 0,
+    cookieSources: {
+      mergedNetworkHeaderCookie: mergedCookie,
+      lastArkRequestCookie: bridge.lastArkRequestCookie || '',
+      lastOrderRequestCookie: bridge.lastOrderRequestCookie || '',
+      lastWalleRequestCookie: bridge.lastWalleRequestCookie || '',
+      lastRequestCookie: bridge.lastRequestCookie || '',
+    },
+    wsCandidates,
+    wsHandshake: handshake,
+    recentWsHeartbeatFrames: [...(bridge.recentWsHeartbeatFrames || [])],
+    httpTemplates: serializeHttpTemplates(bridge.httpTemplates),
+    lastMessageListRequest: bridge.lastMessageListRequest
+      ? {
+          pathKey: bridge.lastMessageListRequest.pathKey,
+          url: bridge.lastMessageListRequest.url,
+          method: bridge.lastMessageListRequest.method,
+          headers: bridge.lastMessageListRequest.headers,
+          bodyTemplate: bridge.lastMessageListRequest.bodyTemplate,
+        }
+      : null,
+    lastManualSendAny: bridge.lastManualSendAny?.payload || null,
+    lastManualSendByAppCid: serializeManualSendMap(bridge.lastManualSendByAppCid),
+    lastManualImageSendAny: bridge.lastManualImageSendAny?.payload || null,
+    lastManualImageSendByAppCid: serializeManualSendMap(bridge.lastManualImageSendByAppCid),
+    sessionContexts,
+    receiverCache,
+    includeFullCookie: options.includeFullCookie !== false,
+  };
+}
+
 module.exports = {
   registerQianfanWsBridge,
   registerBuyerMessageHandler,
@@ -2166,6 +2460,9 @@ module.exports = {
   resolveReplyContextForSend,
   noteBuyerAppCidOnBridge,
   listRegisteredShops,
+  getAllQianfanBridges,
+  getQianfanBridgeByShopTitle,
+  buildQianfanProtocolSnapshot,
   normalizeShopKey,
   HTTP_CAPTURE_PATHS,
 };

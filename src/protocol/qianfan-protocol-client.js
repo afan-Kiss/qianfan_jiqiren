@@ -420,7 +420,7 @@ class QianfanProtocolClient {
     });
   }
 
-  async sendText({ appCid, receiverAppUids, text, reallySend = false }) {
+  async sendText({ appCid, receiverAppUids, text, reallySend = false, verifyList = true }) {
     if (!appCid) return { ok: false, error: '缺少 appCid' };
     if (!Array.isArray(receiverAppUids) || !receiverAppUids.length) {
       return { ok: false, error: '缺少 receiverAppUids' };
@@ -429,11 +429,44 @@ class QianfanProtocolClient {
 
     const built = this.buildTextPayload({ appCid, receiverAppUids, text });
     const sendResult = await this.sendRawWsPayload(built.payload, { reallySend });
+    let listVerify = { skipped: true };
+    if (reallySend && verifyList && sendResult.ok) {
+      listVerify = await this.verifySendViaMessageList({
+        appCid,
+        text,
+        traceId: sendResult.traceId,
+        msgId: sendResult.ack?.msgId,
+      });
+    }
     return {
       ...sendResult,
       payloadValid: Boolean(built.payload?.header?.action === '/message/send'),
       payloadSummary: summarizePayload(built.payload),
       built,
+      listVerify,
+    };
+  }
+
+  async verifySendViaMessageList({ appCid, text, traceId = '', msgId = '' }) {
+    const list = await this.fetchMessageList(appCid);
+    if (!list.ok) {
+      return { ok: false, skipped: false, reason: list.error || 'message_list_failed', list };
+    }
+    const needle = String(text || '').trim();
+    const hit = (list.messagesPreview || []).find((m) => {
+      const body = String(m.text || '');
+      if (msgId && String(m.msgId || '') === String(msgId)) return true;
+      if (needle && body.includes(needle)) return true;
+      return false;
+    });
+    return {
+      ok: Boolean(hit),
+      skipped: false,
+      found: Boolean(hit),
+      traceId,
+      msgId,
+      messageCount: list.messageCount,
+      previewCount: list.messagesPreview?.length || 0,
     };
   }
 
