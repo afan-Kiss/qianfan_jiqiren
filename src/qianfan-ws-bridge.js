@@ -1697,7 +1697,7 @@ async function registerQianfanWsBridge(pageInfo, client) {
   return bridge;
 }
 
-async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, buyerNick = '' }) {
+async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, buyerNick = '', strictTarget = false }) {
   let bridge = findBridgeByShopTitle(shopTitle);
   if (!bridge) {
     throw new Error(`未找到店铺「${normalizeShopKey(shopTitle)}」的千帆发送桥，请确认该店铺工作台已打开`);
@@ -1707,21 +1707,23 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
   bridge = await prepareShopSendBridge(bridge, shopTitle, appCid);
 
   const sessionContext = getSessionContext(shopTitle, appCid);
-  const effectiveBuyerNick = String(buyerNick || sessionContext?.buyerNick || '').trim();
+  const effectiveBuyerNick = String(buyerNick || (!strictTarget && sessionContext?.buyerNick) || '').trim();
   assertSendAllowedForBuyer(effectiveBuyerNick, 'sendQianfanTextReply');
 
   let finalReceiverAppUids = [...(receiverAppUids || [])].filter(Boolean);
-  if (!finalReceiverAppUids.length && sessionContext?.receiverAppUids?.length) {
-    finalReceiverAppUids = [...sessionContext.receiverAppUids];
+  if (!strictTarget) {
+    if (!finalReceiverAppUids.length && sessionContext?.receiverAppUids?.length) {
+      finalReceiverAppUids = [...sessionContext.receiverAppUids];
+    }
   }
 
   if (!isValidAppCid(appCid)) {
     throw new Error(`会话 appCid 无效（${appCid || '空'}），请等待该买家再次发消息后再回复`);
   }
 
-  const manualForCid = bridge.lastManualSendByAppCid.get(appCid) || null;
+  const manualForCid = strictTarget ? null : bridge.lastManualSendByAppCid.get(appCid) || null;
   const manualTemplate = isUsableTextManualTemplate(manualForCid, appCid) ? manualForCid : null;
-  if (!finalReceiverAppUids.length && manualForCid?.receiverAppUids?.length) {
+  if (!strictTarget && !finalReceiverAppUids.length && manualForCid?.receiverAppUids?.length) {
     finalReceiverAppUids = manualForCid.receiverAppUids;
   }
 

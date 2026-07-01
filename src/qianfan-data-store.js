@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { resolveDataDir } = require('./shared/app-root');
+const { println } = require('./utils');
 
 const DATA_DIR = resolveDataDir();
 const PENDING_FILE = path.join(DATA_DIR, 'pending-notifications.json');
@@ -339,16 +340,13 @@ function lookupSentNotificationForQuote(quotedMsgId, fromWxid = '') {
   const sender = String(fromWxid || '').trim();
 
   const direct = lookupSentNotificationByWxMsgId(quoteId);
-  if (direct && (!sender || !direct.targetWxid || direct.targetWxid === sender)) {
-    return direct;
-  }
+  if (!direct) return null;
 
-  const map = loadSentMap();
-  for (const [key, entry] of Object.entries(map)) {
-    if (String(key) !== quoteId) continue;
-    if (!sender || !entry?.targetWxid || entry.targetWxid === sender) {
-      return entry;
-    }
+  if (sender && direct.targetWxid && direct.targetWxid !== sender) {
+    println(
+      `[引用映射] wxMsgId=${quoteId} 属于通知接收人 ${direct.targetWxid}，当前回复人 ${sender} 不一致，拒绝匹配`
+    );
+    return null;
   }
 
   return direct;
@@ -363,16 +361,22 @@ function lookupSentNotificationByReplyId(replyId, fromWxid = '') {
   if (indexed) {
     const hit = { ...indexed, wxMsgId: String(indexed.wxMsgId || '').trim() };
     if (!sender || !hit.targetWxid || hit.targetWxid === sender) return hit;
+    println(
+      `[引用映射] replyId=#${num} 属于通知接收人 ${hit.targetWxid}，当前回复人 ${sender} 不一致，拒绝匹配`
+    );
+    return null;
   }
-  let fallback = null;
   for (const [wxMsgId, entry] of Object.entries(map)) {
     if (String(wxMsgId).startsWith('replyId:')) continue;
     if (Number(entry?.replyId) !== num) continue;
     const hit = { ...entry, wxMsgId: String(entry?.wxMsgId || wxMsgId || '').trim() };
     if (!sender || !hit.targetWxid || hit.targetWxid === sender) return hit;
-    if (!fallback) fallback = hit;
+    println(
+      `[引用映射] replyId=#${num} 属于通知接收人 ${hit.targetWxid}，当前回复人 ${sender} 不一致，拒绝匹配`
+    );
+    return null;
   }
-  return fallback;
+  return null;
 }
 
 function extractNoticeFieldFromText(text, label) {

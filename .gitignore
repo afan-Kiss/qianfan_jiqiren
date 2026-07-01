@@ -3,8 +3,12 @@ node_modules/
 
 # runtime / logs / local data
 logs/
+**/logs/debug/
+**/logs/**/*.jsonl
 /runtime/
 data/
+tmp/
+**/tmp/
 config/qianfan-shops.json
 exports/
 backup-before-restore-*/

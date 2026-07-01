@@ -267,19 +267,81 @@ function parseAuthorizedWechatReply(parsed, body) {
   let replyText = String(rawText || '').trim();
   let source = null;
   let quotedWxMsgId = '';
+  let quoteText = '';
+  let quoteParsedReplyId = null;
+  let mappedReplyId = null;
 
-  if (quote.quotedMsgId) {
-    quotedWxMsgId = String(quote.quotedMsgId).trim();
-    const mapped = lookupSentNotificationForQuote(quotedWxMsgId, from);
-    if (mapped?.replyId) {
-      replyId = Number(mapped.replyId);
+  quoteText = String(quote.quoteText || '').trim();
+  quotedWxMsgId = String(quote.quotedMsgId || '').trim();
+  if (quoteText) {
+    quoteParsedReplyId = parseReplyIdFromText(quoteText);
+  }
+
+  let mappedFromQuote = null;
+  if (quotedWxMsgId) {
+    mappedFromQuote = lookupSentNotificationForQuote(quotedWxMsgId, from);
+    if (mappedFromQuote?.replyId) {
+      mappedReplyId = Number(mappedFromQuote.replyId);
+      replyId = mappedReplyId;
       source = 'quote';
     }
   }
 
-  if (!replyId && quote.quoteText) {
-    replyId = parseReplyIdFromText(quote.quoteText);
-    if (replyId) source = 'quote';
+  if (
+    quotedWxMsgId &&
+    quoteParsedReplyId != null &&
+    mappedReplyId != null &&
+    Number(quoteParsedReplyId) !== Number(mappedReplyId)
+  ) {
+    return {
+      ok: false,
+      authorized: true,
+      reason: 'quote_reply_id_conflict',
+      replyId: mappedReplyId,
+      wxMsgId,
+      rawText,
+      quote,
+      quotedWxMsgId,
+      quoteText,
+      quoteParsedReplyId,
+      mappedReplyId,
+      source,
+      body,
+      root,
+      data,
+    };
+  }
+
+  if (quotedWxMsgId && !replyId) {
+    if (quoteText && REPLY_ID_PATTERN.test(quoteText) && quoteParsedReplyId) {
+      replyId = Number(quoteParsedReplyId);
+      source = 'quote_text_id';
+    } else {
+      return {
+        ok: false,
+        authorized: true,
+        reason: 'quote_map_miss',
+        replyId: null,
+        wxMsgId,
+        rawText,
+        quote,
+        quotedWxMsgId,
+        quoteText,
+        quoteParsedReplyId,
+        mappedReplyId,
+        body,
+        root,
+        data,
+      };
+    }
+  }
+
+  if (!replyId && quoteText && !quotedWxMsgId) {
+    quoteParsedReplyId = parseReplyIdFromText(quoteText);
+    if (quoteParsedReplyId) {
+      replyId = Number(quoteParsedReplyId);
+      source = 'quote';
+    }
   }
 
   if (!replyId) {
@@ -294,7 +356,6 @@ function parseAuthorizedWechatReply(parsed, body) {
   if (!replyId || !replyText) {
     let reason = 'no_reply_id';
     if (replyId && !replyText) reason = 'empty_reply_text';
-    else if (quotedWxMsgId && !replyId) reason = 'quote_map_miss';
     return {
       ok: false,
       authorized: true,
@@ -304,6 +365,10 @@ function parseAuthorizedWechatReply(parsed, body) {
       rawText,
       quote,
       quotedWxMsgId,
+      quoteText,
+      quoteParsedReplyId,
+      mappedReplyId,
+      source,
       body,
       root,
       data,
@@ -320,6 +385,9 @@ function parseAuthorizedWechatReply(parsed, body) {
     wxMsgId,
     quote,
     quotedWxMsgId,
+    quoteText,
+    quoteParsedReplyId,
+    mappedReplyId,
     rawText,
   };
 }
@@ -358,6 +426,7 @@ function formatInvalidReplyReason(reason = '') {
   const map = {
     no_reply_id: '没有识别到引用通知或 #编号',
     quote_map_miss: '引用的不是待回复通知，请重新引用【千帆待回复 #编号】',
+    quote_reply_id_conflict: '引用消息和编号不一致，为避免发错人已拦截',
     empty_reply_text: '已识别编号，但回复内容为空，请在引用后输入文字',
     non_text: '当前只支持文本回复，请发送文字内容',
   };
@@ -367,7 +436,9 @@ function formatInvalidReplyReason(reason = '') {
 function shouldNotifyInvalidReply(reply = {}) {
   if (!reply.authorized) return false;
   const reason = String(reply.reason || '');
-  if (reason === 'quote_map_miss' || reason === 'empty_reply_text') return true;
+  if (reason === 'quote_map_miss' || reason === 'empty_reply_text' || reason === 'quote_reply_id_conflict') {
+    return true;
+  }
   if (reason === 'no_reply_id' || reason === 'non_text') {
     return isReplyAttempt(reply.rawText, reply.quote);
   }

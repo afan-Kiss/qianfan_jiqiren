@@ -13,11 +13,15 @@ const {
   parseRobotNotificationForMap,
   shouldNotifyInvalidReply,
   formatInvalidReplyReason,
+  parseReplyIdFromText,
 } = require('./wechat-reply-parser');
 const {
   recordSentNotification,
   findPendingByReplyId,
-  getReceiverAppUids,
+  lookupSentNotificationByWxMsgId,
+  buyerNickMatches,
+  normalizeShopKey,
+  parseNoticeContextFromText,
   appendSentReply,
   hasSuccessfulReplyForReplyId,
   updatePendingAfterReply,
@@ -28,6 +32,7 @@ const { sendQianfanTextReply, findBridgeByShopTitle } = require('./qianfan-ws-br
 const { withTimeout } = require('./cdp-timeout');
 
 const QIANFAN_SEND_TOTAL_TIMEOUT_MS = 36000;
+const TARGET_LOCK_BLOCK_RECEIPT = '为避免发错买家，本次已拦截，请重新引用对应的待回复通知。';
 
 function debugLogPath() {
   const d = new Date();
@@ -43,6 +48,59 @@ function debugLog(entry) {
   fs.appendFileSync(debugLogPath(), `${JSON.stringify({ time: new Date().toISOString(), ...entry })}\n`, 'utf8');
 }
 
+function assertPendingMatchesReply(reply, pending, fromWxid = '') {
+  const reasons = [];
+
+  if (!String(pending?.shopTitle || '').trim()) reasons.push('missing_shop_title');
+  if (!String(pending?.appCid || '').trim()) reasons.push('missing_app_cid');
+  const receiverAppUids = Array.isArray(pending?.receiverAppUids)
+    ? pending.receiverAppUids.map((u) => String(u || '').trim()).filter(Boolean)
+    : [];
+  if (!receiverAppUids.length) reasons.push('missing_receiver_app_uids');
+  if (!String(pending?.buyerNick || '').trim()) reasons.push('missing_buyer_nick');
+
+  const quoteText = String(reply?.quoteText || reply?.quote?.quoteText || '').trim();
+  if (quoteText) {
+    const ctx = parseNoticeContextFromText(quoteText);
+    if (ctx.shopTitle && pending.shopTitle) {
+      if (normalizeShopKey(ctx.shopTitle) !== normalizeShopKey(pending.shopTitle)) {
+        reasons.push('quote_shop_mismatch');
+      }
+    }
+    if (ctx.buyerNick && pending.buyerNick && !buyerNickMatches(ctx.buyerNick, pending.buyerNick)) {
+      reasons.push('quote_buyer_mismatch');
+    }
+    const quoteReplyId = parseReplyIdFromText(quoteText);
+    if (quoteReplyId != null && Number(quoteReplyId) !== Number(pending.replyId)) {
+      reasons.push('quote_reply_id_mismatch');
+    }
+  }
+
+  const quotedWxMsgId = String(reply?.quotedWxMsgId || '').trim();
+  if (quotedWxMsgId) {
+    const mapped = lookupSentNotificationByWxMsgId(quotedWxMsgId);
+    if (!mapped) {
+      reasons.push('quoted_msg_not_mapped');
+    } else {
+      const sender = String(fromWxid || '').trim();
+      if (mapped.targetWxid && sender && mapped.targetWxid !== sender) {
+        reasons.push('quoted_target_wxid_mismatch');
+      }
+      if (mapped.replyId != null && Number(mapped.replyId) !== Number(pending.replyId)) {
+        reasons.push('quoted_reply_id_mismatch');
+      }
+      if (mapped.appCid && pending.appCid && String(mapped.appCid) !== String(pending.appCid)) {
+        reasons.push('quoted_app_cid_mismatch');
+      }
+    }
+  }
+
+  if (reasons.length) {
+    return { ok: false, reasons, blockReason: reasons.join(',') };
+  }
+  return { ok: true, receiverAppUids };
+}
+
 async function sendReceiptToNotifyAccount(content, wxid) {
   const target = String(wxid || '').trim() || getAuthorizedReplyWxids()[0] || config.notifyReceiverAccount?.wxid;
   if (!target || config.dryRun) return;
@@ -50,9 +108,13 @@ async function sendReceiptToNotifyAccount(content, wxid) {
   await sendWxText(target, content);
 }
 
-function formatSuccessReceipt(replyId, pending, text, isAppend) {
+function formatSuccessReceipt(replyId, pending, text, isAppend, ack = {}) {
   const head = isAppend ? `✅ 已追加回复 #${replyId}` : `✅ 已回复 #${replyId}`;
-  return [head, `店铺：${pending.shopTitle}`, `买家：${pending.buyerNick || '买家'}`, `内容：${text}`].join('\n');
+  const lines = [head, `店铺：${pending.shopTitle}`, `买家：${pending.buyerNick || '买家'}`, `内容：${text}`];
+  if (ack.ackConfirmed && ack.echoVerified === false) {
+    lines.push('提示：ACK 已成功，但暂未捕获页面回显，请到千帆人工确认是否已发出');
+  }
+  return lines.join('\n');
 }
 
 function formatFailureReceipt({ replyId, pending, reason, text }) {
@@ -68,6 +130,15 @@ function formatFailureReceipt({ replyId, pending, reason, text }) {
   if (pending?.buyerNick) lines.push(`买家：${pending.buyerNick}`);
   lines.push(`原因：${reason}`);
   if (text) lines.push(`内容：${text}`);
+  return lines.join('\n');
+}
+
+function formatTargetLockBlockReceipt(replyId, pending) {
+  const lines = ['❌ 回复失败'];
+  if (replyId) lines.push(`#${replyId}`);
+  if (pending?.shopTitle) lines.push(`店铺：${pending.shopTitle}`);
+  if (pending?.buyerNick) lines.push(`买家：${pending.buyerNick}`);
+  lines.push(TARGET_LOCK_BLOCK_RECEIPT);
   return lines.join('\n');
 }
 
@@ -92,7 +163,16 @@ function createWechatToQianfanDispatcher() {
     }
 
     const reply = parseAuthorizedWechatReply(parsed, body);
-    debugLog({ event: 'parsed_reply', reply });
+    debugLog({
+      event: 'parsed_reply',
+      replyId: reply.replyId || null,
+      quotedWxMsgId: reply.quotedWxMsgId || '',
+      quoteText: reply.quoteText || '',
+      mappedReplyId: reply.mappedReplyId || null,
+      source: reply.source || null,
+      ok: reply.ok,
+      reason: reply.reason || '',
+    });
 
     if (!reply.ok) {
       if (!shouldNotifyInvalidReply(reply)) {
@@ -134,6 +214,7 @@ function createWechatToQianfanDispatcher() {
         text: replyText,
       });
       println(`[错误] #${replyId} 回复失败：未找到 pending`);
+      debugLog({ event: 'blocked', replyId, blockReason: 'pending_not_found' });
       try {
         await sendReceiptToNotifyAccount(receipt, parsed.from);
       } catch (err) {
@@ -142,43 +223,31 @@ function createWechatToQianfanDispatcher() {
       return;
     }
 
-    if (!pending.appCid) {
-      const receipt = formatFailureReceipt({
-        replyId,
-        pending,
-        reason: '未找到对应千帆会话 appCid，请到千帆手动回复',
-        text: replyText,
-      });
-      println(`[错误] #${replyId} 回复失败：缺少 appCid`);
+    const validation = assertPendingMatchesReply(reply, pending, parsed.from);
+    debugLog({
+      event: validation.ok ? 'pre_send_check_ok' : 'blocked',
+      replyId,
+      quotedWxMsgId: reply.quotedWxMsgId || '',
+      quoteText: reply.quoteText || '',
+      mappedReplyId: reply.mappedReplyId || null,
+      pendingShop: pending.shopTitle || '',
+      pendingBuyer: pending.buyerNick || '',
+      pendingAppCid: pending.appCid || '',
+      receiverAppUids: validation.receiverAppUids || pending.receiverAppUids || [],
+      blockReason: validation.blockReason || '',
+    });
+
+    if (!validation.ok) {
+      println(`[发送前拦截] reason=${validation.blockReason}`);
       try {
-        await sendReceiptToNotifyAccount(receipt, parsed.from);
+        await sendReceiptToNotifyAccount(formatTargetLockBlockReceipt(replyId, pending), parsed.from);
       } catch (err) {
         println(`[错误] 回执发送失败：${err.message || err}`);
       }
       return;
     }
 
-    let receiverAppUids = Array.isArray(pending.receiverAppUids)
-      ? pending.receiverAppUids.filter(Boolean)
-      : [];
-    if (!receiverAppUids.length) {
-      receiverAppUids = getReceiverAppUids(pending.shopTitle, pending.appCid);
-    }
-    if (!receiverAppUids.length) {
-      const receipt = formatFailureReceipt({
-        replyId,
-        pending,
-        reason: '缺少买家 receiverAppUids，请到千帆手动回复',
-        text: replyText,
-      });
-      println(`[错误] #${replyId} 回复失败：缺少 receiverAppUids`);
-      try {
-        await sendReceiptToNotifyAccount(receipt, parsed.from);
-      } catch (err) {
-        println(`[错误] 回执发送失败：${err.message || err}`);
-      }
-      return;
-    }
+    const receiverAppUids = validation.receiverAppUids;
 
     if (!findBridgeByShopTitle(pending.shopTitle)) {
       const receipt = formatFailureReceipt({
@@ -196,7 +265,11 @@ function createWechatToQianfanDispatcher() {
       return;
     }
 
-    const modeLabel = mode === 'quote' ? '引用' : '#编号';
+    println(
+      `[发送前校验] #${replyId} 店铺=${pending.shopTitle} 买家=${pending.buyerNick || '买家'} appCid=${pending.appCid} receiver=${JSON.stringify(receiverAppUids)} 校验通过`
+    );
+
+    const modeLabel = mode === 'quote' || mode === 'quote_text_id' ? '引用' : '#编号';
     println(`[回复] 收到二号${modeLabel}回复：#${replyId} 内容=${replyText}`);
     println(`[千帆] 正在发送回复：店铺=${pending.shopTitle} 买家=${pending.buyerNick || '买家'}`);
 
@@ -209,10 +282,15 @@ function createWechatToQianfanDispatcher() {
           receiverAppUids,
           text: replyText,
           buyerNick: pending.buyerNick || '',
+          strictTarget: true,
         }),
         QIANFAN_SEND_TOTAL_TIMEOUT_MS,
         'sendQianfanTextReply'
       );
+
+      if (!ack?.ackConfirmed) {
+        throw new Error('千帆 ACK 未确认，请到千帆手动确认是否已发出');
+      }
 
       markWechatReplyProcessed({ wechatReplyMsgId: wxMsgId, replyId });
       updatePendingAfterReply(replyId);
@@ -223,6 +301,8 @@ function createWechatToQianfanDispatcher() {
         text: replyText,
         sentAt: Date.now(),
         status: 'sent',
+        ackConfirmed: true,
+        echoVerified: ack.echoVerified === true,
       });
 
       println(`[回复] #${replyId} 已发送千帆 msgId=${ack.msgId}`);
@@ -230,12 +310,20 @@ function createWechatToQianfanDispatcher() {
         event: 'sent_ok',
         replyId,
         wxMsgId,
+        quotedWxMsgId: reply.quotedWxMsgId || '',
+        quoteText: reply.quoteText || '',
+        mappedReplyId: reply.mappedReplyId || null,
+        pendingShop: pending.shopTitle,
+        pendingBuyer: pending.buyerNick,
+        pendingAppCid: pending.appCid,
+        receiverAppUids,
         qianfanMsgId: ack.msgId,
         text: replyText,
         isAppend,
+        echoVerified: ack.echoVerified === true,
       });
 
-      const receipt = formatSuccessReceipt(replyId, pending, replyText, isAppend);
+      const receipt = formatSuccessReceipt(replyId, pending, replyText, isAppend, ack);
       await sendReceiptToNotifyAccount(receipt, parsed.from);
       println(`[微信] 已发送回复回执：#${replyId}`);
     } catch (err) {
@@ -244,7 +332,18 @@ function createWechatToQianfanDispatcher() {
         reason = '千帆发送流程超时，可能 ACK/UI 同步/回显卡住，请到千帆手动确认';
       }
       println(`[错误] #${replyId} 回复失败：${reason}`);
-      debugLog({ event: 'sent_fail', replyId, error: reason, text: replyText });
+      debugLog({
+        event: 'sent_fail',
+        replyId,
+        quotedWxMsgId: reply.quotedWxMsgId || '',
+        quoteText: reply.quoteText || '',
+        pendingShop: pending.shopTitle,
+        pendingBuyer: pending.buyerNick,
+        pendingAppCid: pending.appCid,
+        receiverAppUids,
+        error: reason,
+        text: replyText,
+      });
 
       const receipt = formatFailureReceipt({
         replyId,
@@ -265,4 +364,6 @@ function createWechatToQianfanDispatcher() {
 
 module.exports = {
   createWechatToQianfanDispatcher,
+  assertPendingMatchesReply,
+  TARGET_LOCK_BLOCK_RECEIPT,
 };
