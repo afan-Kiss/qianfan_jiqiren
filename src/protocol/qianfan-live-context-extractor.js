@@ -245,14 +245,36 @@ function summarizeLiveShopRow(snapshot) {
   };
 }
 
+function scoreWsCandidateEntry(c) {
+  const url = String(c?.url || '');
+  let score = Number(c?.score) || 0;
+  if (c?.seenMessageSend) score += 500;
+  if (c?.seenBuyerSync) score += 300;
+  if (c?.seenImpaasTraffic) score += 80;
+  if (/apppush/i.test(url)) score -= 250;
+  if (/walle\.xiaohongshu\.com/i.test(url) && /impaas|longlink/i.test(url)) score += 120;
+  if (/edith\.xiaohongshu\.com/i.test(url) && /longlink|impaas/i.test(url)) score += 100;
+  if (/impaas/i.test(url)) score += 60;
+  return score;
+}
+
 function pickWsCandidate(snapshot) {
-  const candidates = Array.isArray(snapshot?.wsCandidates) ? [...snapshot.wsCandidates] : [];
+  const candidates = [];
+  const manualUrl = String(snapshot?.wsUrlFromManualSend || '').trim();
+  if (manualUrl) {
+    candidates.push({
+      url: manualUrl,
+      score: 2000,
+      seenMessageSend: true,
+      seenBuyerSync: true,
+      seenImpaasTraffic: true,
+      source: 'lastManualSend.requestId',
+    });
+  }
+  candidates.push(...(Array.isArray(snapshot?.wsCandidates) ? snapshot.wsCandidates : []));
   candidates.sort(
     (a, b) =>
-      Number(b.seenMessageSend) - Number(a.seenMessageSend) ||
-      Number(b.seenBuyerSync) - Number(a.seenBuyerSync) ||
-      Number(b.seenImpaasTraffic) - Number(a.seenImpaasTraffic) ||
-      b.score - a.score ||
+      scoreWsCandidateEntry(b) - scoreWsCandidateEntry(a) ||
       b.lastActivityAt - a.lastActivityAt
   );
   return candidates[0] || null;

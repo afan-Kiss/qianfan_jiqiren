@@ -2417,13 +2417,15 @@ function mergePageWsCandidates(existing, pageWsList) {
     if (/impaas/i.test(url)) score += 90;
     if (Number(row.readyState) === 1) score += 40;
     if (Array.isArray(row.appCids) && row.appCids.length) score += 30;
+    if (/apppush/i.test(url)) score -= 150;
+    if (/walle\.xiaohongshu\.com/i.test(url) && /impaas|longlink/i.test(url)) score += 80;
     out.push({
       requestId: `page-${out.length}`,
       url,
       score,
       lastSeq: 0,
       lastActivityAt: Date.now(),
-      seenMessageSend: score >= 100,
+      seenMessageSend: Number(row.score) >= 100,
       seenReadFromOne: false,
       seenBuyerSync: false,
       seenImpaasTraffic: true,
@@ -2529,6 +2531,16 @@ function buildQianfanProtocolSnapshot(shopTitle, options = {}) {
   const sessionContexts = listSessionContextsForShop(normalizedShopTitle);
   const receiverCache = listReceiverCacheForShop(normalizedShopTitle);
 
+  let wsUrlFromManualSend = '';
+  const manualReqId = bridge.lastManualSendAny?.requestId || '';
+  if (manualReqId) {
+    wsUrlFromManualSend = String(bridge.wsUrls.get(manualReqId) || '');
+    if (!wsUrlFromManualSend) {
+      const hs = bridge.wsHandshakeHeaders?.get(manualReqId);
+      wsUrlFromManualSend = String(hs?.url || '');
+    }
+  }
+
   return {
     ok: true,
     shopTitle: bridge.shopTitle,
@@ -2547,6 +2559,7 @@ function buildQianfanProtocolSnapshot(shopTitle, options = {}) {
       lastRequestCookie: bridge.lastRequestCookie || '',
     },
     wsCandidates,
+    wsUrlFromManualSend,
     wsHandshake: handshake,
     recentWsHeartbeatFrames: [...(bridge.recentWsHeartbeatFrames || [])],
     httpTemplates: serializeHttpTemplates(bridge.httpTemplates),
