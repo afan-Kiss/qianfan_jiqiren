@@ -26,10 +26,9 @@ function exampleConfigPath() {
 function readJsonFile(filePath) {
   const raw = fs.readFileSync(filePath, 'utf8');
   const data = JSON.parse(raw);
-  if (!Array.isArray(data)) {
-    throw new Error(`${path.basename(filePath)} 必须是 JSON 数组`);
-  }
-  return data;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.shops)) return data.shops;
+  throw new Error(`${path.basename(filePath)} 必须是 JSON 数组或 { shops: [] }`);
 }
 
 function cookieContainsKey(cookie, pattern) {
@@ -179,6 +178,7 @@ module.exports = {
   LOCAL_SETUP_HINT,
   localConfigPath,
   exampleConfigPath,
+  readJsonFile,
   summarizeCookie,
   loadProtocolShopConfigs,
   findProtocolShopConfig,

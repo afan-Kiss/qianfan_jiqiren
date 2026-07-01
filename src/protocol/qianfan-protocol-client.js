@@ -3,9 +3,31 @@
  */
 const WebSocket = require('ws');
 const { buildTextSendPayloadFromContext } = require('../qf-send-payload');
-const { extractBuyerMessagesFromWsPayload, extractMessagesFromResponse } = require('../chat-parse');
+const {
+  extractBuyerMessagesFromWsPayload,
+  extractMessagesFromResponse,
+  parseMaybeJson,
+} = require('../chat-parse');
+const { mergeHttpAuthHeaders, pickHeader } = require('./qianfan-protocol-auth');
+const {
+  buildWsAuthFrame,
+  parseAuthAckFrame,
+  cleanWsHandshakeHeaders,
+  makeTraceId,
+} = require('./qianfan-protocol-ws-auth');
+const {
+  needsWsAuthHandshake,
+  supportsMessageSend,
+  resolveProtocolWsEndpoints,
+  formatMissingSendUrlError,
+} = require('./qianfan-protocol-ws-routing');
+const {
+  extractAllChatMessages,
+  parseMessageListMeta,
+} = require('./qianfan-protocol-messages');
 
 const DEFAULT_ACK_TIMEOUT_MS = 8000;
+const DEFAULT_AUTH_TIMEOUT_MS = 10000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -106,34 +128,79 @@ class QianfanProtocolClient {
     this.referer = shopConfig.referer;
     this.wsUrl = String(shopConfig?.ws?.url || '').trim();
     this.wsHeaders = shopConfig?.ws?.headers || {};
+    this.wsEndpoints = resolveProtocolWsEndpoints(shopConfig);
+    this.wsSendUrl = this.wsEndpoints.sendUrl || '';
+    this.wsListenUrl = this.wsEndpoints.listenUrl || this.wsUrl || '';
     this.httpTemplates = shopConfig.httpTemplates || {};
-    this.lastSeq = 0;
+    this.httpAuthHeaders = shopConfig.httpAuthHeaders || {};
+    this.lastSeq = Number(shopConfig.lastSeq || 0);
     this.ackWaiters = [];
+    this.authWaiters = [];
     this.receivedFrames = [];
     this.buyerMessages = [];
+    this.allMessages = [];
     this.ws = null;
+    this.wsListen = null;
+    this.wsAuthed = false;
+    this.wsChannelId = '';
+    this._authPromise = null;
     this.actionStats = {};
+    this._listenActive = false;
+    this._onFrame = null;
+  }
+
+  setHttpAuthHeaders(headers) {
+    this.httpAuthHeaders = { ...(headers || {}) };
+  }
+
+  setLastSeq(seq) {
+    const n = Number(seq || 0);
+    if (n > this.lastSeq) this.lastSeq = n;
   }
 
   buildHttpHeaders(extraHeaders = {}) {
+    const tpl = this.httpTemplates?.messageList || {};
+    const isImpaas = String(tpl.url || '').includes('/api/impaas/');
     const base = {
-      Cookie: this.cookie,
-      'User-Agent': this.userAgent || 'qianfan-protocol-test/1.0',
-      Origin: this.origin,
-      Referer: this.referer,
       Accept: 'application/json, text/plain, */*',
       'Content-Type': 'application/json',
+      'User-Agent': this.userAgent || 'qianfan-protocol-test/1.0',
     };
-    return { ...base, ...extraHeaders };
+    if (!isImpaas) {
+      base.Origin = this.origin;
+      base.Referer = this.referer;
+      if (this.cookie) base.Cookie = this.cookie;
+    }
+    return mergeHttpAuthHeaders(base, { ...this.httpAuthHeaders, ...(extraHeaders || {}) }, this.cookie, {
+      sendCookie: !isImpaas,
+    });
   }
 
-  buildWsHeaders() {
+  refreshWsEndpoints(shopConfig, tapRows = []) {
+    this.shopConfig = shopConfig || this.shopConfig;
+    this.wsEndpoints = resolveProtocolWsEndpoints(this.shopConfig, tapRows);
+    this.wsSendUrl = this.wsEndpoints.sendUrl || '';
+    this.wsListenUrl = this.wsEndpoints.listenUrl || this.wsUrl || '';
+    if (this.wsSendUrl) this.wsUrl = this.wsSendUrl;
+    else if (this.wsListenUrl) this.wsUrl = this.wsListenUrl;
+  }
+
+  buildWsHeaders(url = '') {
+    const targetUrl = String(url || this.wsListenUrl || this.wsSendUrl || this.wsUrl || '');
+    const useApppushHandshake = needsWsAuthHandshake(targetUrl);
+    const hs = this.shopConfig?.ws?.handshakeHeaders || {};
     const cfg = this.wsHeaders || {};
-    return {
-      Cookie: String(cfg.Cookie || cfg.cookie || this.cookie || '').trim(),
-      'User-Agent': String(cfg['User-Agent'] || cfg.UserAgent || this.userAgent || '').trim(),
-      Origin: String(cfg.Origin || cfg.origin || this.origin || '').trim(),
-    };
+    const auth = pickHeader(this.httpAuthHeaders, 'authorization') || pickHeader(cfg, 'authorization');
+    const headers = cleanWsHandshakeHeaders(
+      { ...hs, ...cfg },
+      useApppushHandshake
+        ? ''
+        : String(cfg.Cookie || cfg.cookie || this.cookie || '').trim(),
+      String(hs['User-Agent'] || cfg['User-Agent'] || cfg.UserAgent || this.userAgent || '').trim(),
+      String(hs.Origin || cfg.Origin || cfg.origin || this.origin || '').trim()
+    );
+    if (!useApppushHandshake && auth) headers.authorization = auth;
+    return headers;
   }
 
   _recordFrame(raw, parsed) {
@@ -145,7 +212,18 @@ class QianfanProtocolClient {
 
     if (action === '/sync/unreliable' || action.includes('/message/')) {
       const msgs = extractBuyerMessagesFromWsPayload(parsed, this.shopTitle);
-      if (msgs.length) this.buyerMessages.push(...msgs);
+      if (msgs.length) {
+        this.buyerMessages.push(...msgs);
+        this.allMessages.push(...msgs);
+      }
+    }
+
+    if (typeof this._onFrame === 'function') {
+      try {
+        this._onFrame(parsed, raw);
+      } catch {
+        // ignore
+      }
     }
 
     if (action === '/message/send') {
@@ -159,9 +237,104 @@ class QianfanProtocolClient {
         else waiter.resolve(ack);
       }
     }
+
+    if (action === 'auth') {
+      for (let i = this.authWaiters.length - 1; i >= 0; i -= 1) {
+        const waiter = this.authWaiters[i];
+        const ack = parseAuthAckFrame(parsed);
+        if (!ack) continue;
+        clearTimeout(waiter.timer);
+        this.authWaiters.splice(i, 1);
+        if (ack.ok) {
+          this.wsAuthed = true;
+          this.wsChannelId = ack.channelId || '';
+          waiter.resolve(ack);
+        } else {
+          waiter.reject(ack.error || new Error('WS auth 失败'));
+        }
+      }
+    }
   }
 
-  async connectWs({ listenMs = 30000 } = {}) {
+  _attachWsHandlers(socket) {
+    if (!socket) return;
+    socket.on('message', (data) => {
+      const raw = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+      const parsed = safeJsonParse(raw);
+      this._recordFrame(raw, parsed);
+    });
+    socket.on('ping', () => {
+      try {
+        if (socket.readyState === WebSocket.OPEN) socket.pong();
+      } catch {
+        // ignore
+      }
+    });
+  }
+
+  async _connectWs(url, { role = 'listen' } = {}) {
+    const targetUrl = String(url || '').trim();
+    if (!targetUrl) throw new Error('缺少 ws url');
+
+    const existing =
+      role === 'send'
+        ? (this.ws?.readyState === WebSocket.OPEN ? this.ws : null) ||
+          (targetUrl === this.wsListenUrl && this.wsListen?.readyState === WebSocket.OPEN
+            ? this.wsListen
+            : null)
+        : this.wsListen || (targetUrl === this.wsSendUrl ? this.ws : null);
+    if (existing && existing.readyState === WebSocket.OPEN) {
+      if (role === 'listen') this.wsListen = existing;
+      if (role === 'send') this.ws = existing;
+      if (needsWsAuthHandshake(targetUrl) && !this.wsAuthed) {
+        await this.authenticateWs({ target: role === 'send' ? 'send' : 'listen' });
+      }
+      return;
+    }
+
+    const headers = this.buildWsHeaders(targetUrl);
+    if (role === 'send') {
+      this.receivedFrames = [];
+      this.ackWaiters = [];
+      this.authWaiters = [];
+      this.wsAuthed = false;
+      this.wsChannelId = '';
+    }
+
+    const socket = await new Promise((resolve, reject) => {
+      let ws;
+      try {
+        ws = new WebSocket(targetUrl, { headers });
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      const timer = setTimeout(() => reject(new Error(`WS 连接超时 (${role})`)), 15000);
+      ws.on('open', () => {
+        clearTimeout(timer);
+        resolve(ws);
+      });
+      ws.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+
+    this._attachWsHandlers(socket);
+    if (role === 'send') {
+      this.ws = socket;
+      if (targetUrl === this.wsListenUrl) this.wsListen = socket;
+    } else {
+      this.wsListen = socket;
+      if (!this.ws || targetUrl === this.wsSendUrl) this.ws = socket;
+    }
+
+    if (needsWsAuthHandshake(targetUrl)) {
+      await this.authenticateWs({ target: role === 'send' ? 'send' : 'listen' });
+    }
+  }
+
+  async connectWs({ listenMs = 30000, keepOpen = false } = {}) {
     const report = {
       ok: false,
       connected: false,
@@ -230,6 +403,12 @@ class QianfanProtocolClient {
         report.closeReason = Buffer.isBuffer(reasonBuf) ? reasonBuf.toString() : String(reasonBuf || '');
       });
 
+      if (keepOpen) {
+        this._listenActive = true;
+        finish();
+        return;
+      }
+
       setTimeout(() => {
         try {
           if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.close();
@@ -244,8 +423,156 @@ class QianfanProtocolClient {
     report.buyerMessageCount = this.buyerMessages.length;
     report.ackCount = this.receivedFrames.filter((f) => f.parsed?.header?.action === '/message/send').length;
     report.ok = report.connected && report.errors.length === 0;
-    this.ws = null;
+    if (!keepOpen) this.ws = null;
     return report;
+  }
+
+  async startListening({ onFrame, onBuyerMessage } = {}) {
+    this._onFrame = (parsed) => {
+      if (typeof onFrame === 'function') onFrame(parsed);
+      if (typeof onBuyerMessage === 'function') {
+        const msgs = extractBuyerMessagesFromWsPayload(parsed, this.shopTitle);
+        for (const m of msgs) onBuyerMessage(m, parsed);
+      }
+    };
+    try {
+      await this.ensureWsListenReady();
+    } catch {
+      // node WS 连接失败时保持 listenMode=none
+    }
+    this._listenActive = true;
+    const listenSock = this.wsListen || this.ws;
+    return {
+      ok: Boolean(listenSock && listenSock.readyState === WebSocket.OPEN),
+      wsUrl: this.wsListenUrl || this.wsUrl,
+    };
+  }
+
+  stopListening() {
+    this._listenActive = false;
+    this._onFrame = null;
+    this.closeWs();
+  }
+
+  buildMessageListBody(appCid, options = {}) {
+    const tpl = this.httpTemplates?.messageList || {};
+    const body = tpl.body && typeof tpl.body === 'object' ? JSON.parse(JSON.stringify(tpl.body)) : {};
+    if (Array.isArray(body.appCids)) {
+      body.appCids = [appCid];
+    } else {
+      body.appCid = appCid;
+    }
+    if (options.cursor != null) body.cursor = options.cursor;
+    if (options.count != null) body.count = options.count;
+    if (options.limit != null) body.limit = options.limit;
+    if (options.direction != null) body.direction = options.direction;
+    if (!body.count && !body.limit) {
+      body.count = 20;
+      body.limit = 20;
+    }
+    return body;
+  }
+
+  async waitForAuthAck(traceId, timeoutMs = DEFAULT_AUTH_TIMEOUT_MS) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = this.authWaiters.findIndex((w) => w.traceId === traceId);
+        if (idx >= 0) this.authWaiters.splice(idx, 1);
+        reject(new Error('WS auth ACK 超时'));
+      }, timeoutMs);
+
+      this.authWaiters.push({ traceId, resolve, reject, timer });
+
+      for (const frame of this.receivedFrames) {
+        const ack = parseAuthAckFrame(frame.parsed);
+        if (!ack) continue;
+        if (traceId && ack.traceId && ack.traceId !== traceId) continue;
+        clearTimeout(timer);
+        const idx = this.authWaiters.findIndex((w) => w.traceId === traceId);
+        if (idx >= 0) this.authWaiters.splice(idx, 1);
+        if (ack.ok) {
+          this.wsAuthed = true;
+          this.wsChannelId = ack.channelId || '';
+          resolve(ack);
+        } else {
+          reject(ack.error || new Error('WS auth 失败'));
+        }
+        return;
+      }
+    });
+  }
+
+  async authenticateWs({ force = false, target = 'listen' } = {}) {
+    const sock = target === 'send' ? this.ws : this.wsListen || this.ws;
+    const url = target === 'send' ? this.wsSendUrl : this.wsListenUrl;
+    if (!needsWsAuthHandshake(url)) {
+      return { ok: true, skipped: true, reason: 'impaas_send_no_auth' };
+    }
+    if (this.wsAuthed && !force) {
+      return { ok: true, channelId: this.wsChannelId, cached: true };
+    }
+    if (!sock || sock.readyState !== WebSocket.OPEN) {
+      throw new Error('WS 未连接，无法 auth');
+    }
+    if (this._authPromise && !force) return this._authPromise;
+
+    this._authPromise = (async () => {
+      const seq = this.lastSeq + 1;
+      const traceId = makeTraceId();
+      const frame = buildWsAuthFrame(this.shopConfig, seq, { traceId });
+      if (!frame.body?.sid) {
+        throw new Error('WS auth 缺少 sid（需 tap 刷新 authorization 或 ws.authTemplate）');
+      }
+      if (!frame.body?.uid) {
+        throw new Error('WS auth 缺少 uid（需 tap 捕获 auth 帧刷新 ws.authTemplate）');
+      }
+
+      const authWait = this.waitForAuthAck(traceId);
+      sock.send(JSON.stringify(frame));
+      const ack = await authWait;
+      if (Number(frame.header.seq) > this.lastSeq) {
+        this.lastSeq = Number(frame.header.seq);
+      }
+      return ack;
+    })();
+
+    try {
+      return await this._authPromise;
+    } finally {
+      this._authPromise = null;
+    }
+  }
+
+  async ensureWsListenReady() {
+    const url = String(this.wsListenUrl || '').trim();
+    if (!url) throw new Error('缺少 ws listen url');
+    if (!this.wsListen || this.wsListen.readyState !== WebSocket.OPEN) {
+      await this._connectWs(url, { role: 'listen' });
+    }
+    if (needsWsAuthHandshake(url) && !this.wsAuthed) {
+      await this.authenticateWs({ target: 'listen' });
+    }
+  }
+
+  async ensureWsSendReady() {
+    const url = String(this.wsSendUrl || '').trim();
+    if (!url || !supportsMessageSend(url)) {
+      throw new Error(formatMissingSendUrlError());
+    }
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      await this._connectWs(url, { role: 'send' });
+    }
+    if (needsWsAuthHandshake(url) && !this.wsAuthed) {
+      await this.authenticateWs({ target: 'send' });
+    }
+  }
+
+  async ensureWsAuthenticated() {
+    if (this.wsSendUrl && supportsMessageSend(this.wsSendUrl)) {
+      await this.ensureWsSendReady();
+      return;
+    }
+    await this.ensureWsListenReady();
   }
 
   async waitForAck(ctx, timeoutMs = DEFAULT_ACK_TIMEOUT_MS) {
@@ -300,6 +627,14 @@ class QianfanProtocolClient {
       return { ok: false, dryRun: false, error: 'WS 未连接', ...ctx };
     }
 
+    if (reallySend) {
+      try {
+        await this.ensureWsSendReady();
+      } catch (err) {
+        return { ok: false, dryRun: false, error: err.message || String(err), ...ctx };
+      }
+    }
+
     const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
     try {
       this.ws.send(payloadStr);
@@ -322,7 +657,7 @@ class QianfanProtocolClient {
     }
   }
 
-  async fetchMessageList(appCid) {
+  async fetchMessageList(appCid, options = {}) {
     const tpl = this.httpTemplates?.messageList;
     if (!tpl?.url) {
       return {
@@ -332,15 +667,13 @@ class QianfanProtocolClient {
         rawBodyShape: 'missing-template',
         messageCount: 0,
         buyerMessageCount: 0,
+        messages: [],
         messagesPreview: [],
       };
     }
 
     const method = String(tpl.method || 'POST').toUpperCase();
-    const body = replaceAppCidInBody(
-      tpl.body && typeof tpl.body === 'object' ? JSON.parse(JSON.stringify(tpl.body)) : {},
-      appCid
-    );
+    const body = this.buildMessageListBody(appCid, options);
     const headers = this.buildHttpHeaders(tpl.headers || {});
 
     let res;
@@ -360,6 +693,7 @@ class QianfanProtocolClient {
         rawBodyShape: 'fetch-error',
         messageCount: 0,
         buyerMessageCount: 0,
+        messages: [],
         messagesPreview: [],
       };
     }
@@ -375,30 +709,82 @@ class QianfanProtocolClient {
         rawBodyShape: `text[len=${text.length}]`,
         messageCount: 0,
         buyerMessageCount: 0,
+        messages: [],
         messagesPreview: [],
         bodyPreview: text.slice(0, 500),
       };
     }
 
-    const messages = extractMessagesFromResponse(json, this.shopTitle, 'protocol_http');
+    const meta = parseMessageListMeta(json);
+    const messages = extractAllChatMessages(json, this.shopTitle, 'protocol_http');
     const buyerOnly = messages.filter((m) => !m.isSellerSide);
-    const preview = buyerOnly.slice(0, 10).map((m) => ({
+    const preview = messages.slice(-10).map((m) => ({
       buyerNick: m.buyerNick,
       text: String(m.text || '').slice(0, 120),
       appCid: m.appCid,
       msgId: m.msgId,
       createAt: m.createAt,
+      isSellerSide: m.isSellerSide,
+      contentType: m.contentType,
     }));
 
+    const apiOk = res.ok && meta.success && meta.msg !== '商家信息有误';
+
     return {
-      ok: res.ok,
+      ok: apiOk,
       status: res.status,
       rawBodyShape: describeBodyShape(json),
       messageCount: messages.length,
       buyerMessageCount: buyerOnly.length,
+      messages,
       messagesPreview: preview,
-      error: res.ok ? '' : `HTTP ${res.status}`,
+      hasMore: meta.hasMore,
+      nextCursor: meta.nextCursor,
+      apiMsg: meta.msg,
+      error: apiOk ? '' : meta.msg || `HTTP ${res.status}`,
+      requestBody: body,
     };
+  }
+
+  async fetchAllSessionMessages(appCid, options = {}) {
+    const maxPages = Number(options.maxPages || 30);
+    const all = [];
+    const seen = new Set();
+    let cursor = options.cursor != null ? options.cursor : -1;
+    let hasMore = true;
+    let pages = 0;
+    let lastError = '';
+
+    while (hasMore && pages < maxPages) {
+      const page = await this.fetchMessageList(appCid, {
+        cursor,
+        count: options.count || 20,
+        limit: options.limit || 20,
+        direction: options.direction != null ? options.direction : false,
+      });
+      pages += 1;
+      if (!page.ok) {
+        lastError = page.error || page.apiMsg || 'list_failed';
+        if (pages === 1) return { ok: false, error: lastError, messages: [], pages, appCid };
+        break;
+      }
+      for (const msg of page.messages || []) {
+        const key = `${msg.appCid}::${msg.msgId}`;
+        if (!msg.msgId || seen.has(key)) continue;
+        seen.add(key);
+        all.push(msg);
+      }
+      hasMore = Boolean(page.hasMore);
+      if (page.nextCursor != null && page.nextCursor >= 0) {
+        cursor = page.nextCursor;
+      } else {
+        hasMore = false;
+      }
+      if (!page.messageCount) hasMore = false;
+    }
+
+    all.sort((a, b) => Number(a.createAt || 0) - Number(b.createAt || 0));
+    return { ok: true, messages: all, pages, appCid, lastError };
   }
 
   buildTextPayload({ appCid, receiverAppUids, text }) {
@@ -420,7 +806,14 @@ class QianfanProtocolClient {
     });
   }
 
-  async sendText({ appCid, receiverAppUids, text, reallySend = false, verifyList = true }) {
+  async sendText({
+    appCid,
+    receiverAppUids,
+    text,
+    reallySend = false,
+    verifyList = true,
+    buyerNick = '',
+  }) {
     if (!appCid) return { ok: false, error: '缺少 appCid' };
     if (!Array.isArray(receiverAppUids) || !receiverAppUids.length) {
       return { ok: false, error: '缺少 receiverAppUids' };
@@ -429,6 +822,7 @@ class QianfanProtocolClient {
 
     const built = this.buildTextPayload({ appCid, receiverAppUids, text });
     const sendResult = await this.sendRawWsPayload(built.payload, { reallySend });
+
     let listVerify = { skipped: true };
     if (reallySend && verifyList && sendResult.ok) {
       listVerify = await this.verifySendViaMessageList({
@@ -470,52 +864,41 @@ class QianfanProtocolClient {
     };
   }
 
+  async collectWsSessionMessages(appCid, { listenMs = 5000 } = {}) {
+    await this.ensureWsListenReady();
+    const before = this.allMessages.length;
+    await sleep(Math.max(500, Number(listenMs) || 5000));
+    const cid = String(appCid || '').trim();
+    const messages = (this.allMessages || []).filter((m) => !cid || m.appCid === cid);
+    return {
+      ok: true,
+      source: 'protocol_ws',
+      messageCount: messages.length,
+      messages,
+      newFrames: this.allMessages.length - before,
+      wsAuthed: this.wsAuthed,
+      channelId: this.wsChannelId,
+    };
+  }
+
   async openWsForSend() {
-    if (!this.wsUrl) throw new Error('缺少 ws.url');
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
-
-    const headers = this.buildWsHeaders();
-    this.receivedFrames = [];
-    this.ackWaiters = [];
-
-    await new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(this.wsUrl, { headers });
-      } catch (err) {
-        reject(err);
-        return;
-      }
-      const timer = setTimeout(() => reject(new Error('WS 连接超时')), 15000);
-      this.ws.on('open', () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      this.ws.on('message', (data) => {
-        const raw = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
-        const parsed = safeJsonParse(raw);
-        this._recordFrame(raw, parsed);
-      });
-      this.ws.on('ping', () => {
-        try {
-          if (this.ws?.readyState === WebSocket.OPEN) this.ws.pong();
-        } catch {
-          // ignore
-        }
-      });
-      this.ws.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
+    await this.ensureWsSendReady();
   }
 
   closeWs() {
-    try {
-      if (this.ws) this.ws.close();
-    } catch {
-      // ignore
+    for (const sock of [this.ws, this.wsListen]) {
+      try {
+        if (sock) sock.close();
+      } catch {
+        // ignore
+      }
     }
     this.ws = null;
+    this.wsListen = null;
+    this.wsAuthed = false;
+    this.wsChannelId = '';
+    this._authPromise = null;
+    this.authWaiters = [];
   }
 }
 

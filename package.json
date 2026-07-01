@@ -77,7 +77,15 @@
     "qf:protocol:test": "node scripts/run-qianfan-protocol-all-tests.js",
     "qf:protocol:export-live": "node scripts/export-qianfan-live-protocol-context.js",
     "qf:protocol:bootstrap-live": "node scripts/export-qianfan-live-protocol-context.js --write-local --run-probe",
-    "qf:protocol:auto": "node scripts/run-qianfan-protocol-auto.js"
+    "qf:protocol:auto": "node scripts/run-qianfan-protocol-auto.js",
+    "qf:protocol:tap:status": "node scripts/qianfan-protocol-tap-status.js",
+    "qf:protocol:tap:bundle": "node scripts/bundle-qianfan-protocol-tap.js",
+    "qf:protocol:tap:auto": "node scripts/run-qianfan-protocol-tap-auto.js",
+    "qf:protocol:im": "node scripts/run-qianfan-protocol-im.js",
+    "qf:protocol:pure": "node scripts/run-qianfan-protocol-pure.js",
+    "qf:protocol:daemon": "node scripts/qianfan-protocol-daemon.js",
+    "qf:protocol:config-agent": "node scripts/qianfan-protocol-config-agent.js",
+    "check:qianfan-protocol-daemon": "node scripts/check-qianfan-protocol-daemon.js"
   },
   "engines": {
     "node": ">=18"

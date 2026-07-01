@@ -134,6 +134,37 @@ async function startQianfanLocalApi(options = {}) {
         return;
       }
 
+      if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/tap/status') {
+        try {
+          const { getProtocolTapStatus } = require('./capture/qianfan-protocol-tap');
+          sendJson(res, 200, { ok: true, ...getProtocolTapStatus() });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || 'tap status failed' });
+        }
+        return;
+      }
+
+      if (req.method === 'POST' && pathOnly === '/api/qianfan/protocol/tap/bundle') {
+        try {
+          const raw = await readBody(req).catch(() => '');
+          let sinceMs = 10 * 60 * 1000;
+          if (raw) {
+            try {
+              const body = JSON.parse(raw);
+              if (body.sinceMs) sinceMs = Number(body.sinceMs);
+            } catch {
+              // ignore
+            }
+          }
+          const { bundleProtocolTap } = require('./capture/qianfan-protocol-tap');
+          const result = bundleProtocolTap({ sinceMs });
+          sendJson(res, result.ok ? 200 : 404, result);
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || 'tap bundle failed' });
+        }
+        return;
+      }
+
       if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/snapshot') {
         try {
           const urlObj = new URL(req.url, 'http://127.0.0.1');
@@ -161,6 +192,94 @@ async function startQianfanLocalApi(options = {}) {
           });
         } catch (err) {
           sendJson(res, 500, { ok: false, error: err.message || 'snapshot failed' });
+        }
+        return;
+      }
+
+      if (pathOnly.startsWith('/api/qianfan/protocol/im/')) {
+        try {
+          const { getProtocolImService } = require('./protocol/qianfan-protocol-service');
+          const urlObj = new URL(req.url, 'http://127.0.0.1');
+          const shopTitle = String(urlObj.searchParams.get('shopTitle') || '').trim();
+          if (!shopTitle) {
+            sendJson(res, 400, { ok: false, error: 'missing shopTitle' });
+            return;
+          }
+
+          if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/im/status') {
+            const svc = await getProtocolImService(shopTitle, { noCache: true });
+            sendJson(res, 200, { ok: true, pureOnly: true, ...svc.getStatus() });
+            return;
+          }
+
+          if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/im/sessions') {
+            const svc = await getProtocolImService(shopTitle);
+            sendJson(res, 200, { ok: true, sessions: svc.listSessions() });
+            return;
+          }
+
+          if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/im/history') {
+            const appCid = String(urlObj.searchParams.get('appCid') || '').trim();
+            const buyerNick = String(urlObj.searchParams.get('buyerNick') || '').trim();
+            const allPages = String(urlObj.searchParams.get('allPages') || '1') !== '0';
+            const svc = await getProtocolImService(shopTitle);
+            const result = await svc.pullSessionHistory(appCid, { buyerNick, allPages });
+            sendJson(res, result.ok ? 200 : 502, { ok: result.ok, ...result });
+            return;
+          }
+
+          if (req.method === 'GET' && pathOnly === '/api/qianfan/protocol/im/history/all') {
+            const includeMessages = String(urlObj.searchParams.get('includeMessages') || '0') === '1';
+            const maxPages = Number(urlObj.searchParams.get('maxPages') || 10);
+            const svc = await getProtocolImService(shopTitle);
+            const result = await svc.pullAllSessionsMessages({
+              includeMessages,
+              maxPagesPerSession: maxPages,
+              concurrency: 2,
+              delayMs: 120,
+            });
+            sendJson(res, result.ok ? 200 : 502, { ok: result.ok, ...result });
+            return;
+          }
+
+          if (req.method === 'POST' && pathOnly === '/api/qianfan/protocol/im/send-text') {
+            const raw = await readBody(req).catch(() => '');
+            let body = {};
+            try {
+              body = raw ? JSON.parse(raw) : {};
+            } catch {
+              sendJson(res, 400, { ok: false, error: 'invalid json body' });
+              return;
+            }
+            const { isProtocolImSendAllowed } = require('./protocol/qianfan-protocol-send-guard');
+            const buyerNick = String(body.buyerNick || '饭饭').trim();
+            if (body.reallySend && !isProtocolImSendAllowed(buyerNick)) {
+              sendJson(res, 403, {
+                ok: false,
+                error: `纯协议 IM 仅允许向「饭饭」发送，当前 buyerNick=${buyerNick || '(空)'}`,
+              });
+              return;
+            }
+            const svc = await getProtocolImService(shopTitle);
+            try {
+              const result = await svc.sendText({
+                appCid: body.appCid,
+                receiverAppUids: body.receiverAppUids,
+                text: body.text,
+                buyerNick,
+                reallySend: Boolean(body.reallySend),
+                verifyList: body.verifyList !== false,
+              });
+              sendJson(res, result.ok ? 200 : 502, { ok: result.ok, ...result });
+            } catch (err) {
+              sendJson(res, 403, { ok: false, error: err.message || 'send blocked' });
+            }
+            return;
+          }
+
+          sendJson(res, 404, { ok: false, error: 'unknown protocol im route' });
+        } catch (err) {
+          sendJson(res, 500, { ok: false, error: err.message || 'protocol im failed' });
         }
         return;
       }
