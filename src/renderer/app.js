@@ -807,16 +807,31 @@ async function handleCheckEnvironment() {
 
 function formatShopCookieFeedback(result) {
   const shops = Array.isArray(result?.shops) ? result.shops : [];
-  if (!shops.length) return result?.message || 'Cookie 提交失败';
+  const lines = [];
+  if (Array.isArray(result?.logs) && result.logs.length) {
+    lines.push('--- 采集与探针 ---');
+    for (const row of result.logs) lines.push(row);
+  }
+  if (!shops.length) {
+    lines.push(result?.message || 'Cookie 提交失败');
+    return lines.join('\n');
+  }
+  lines.push('--- 上传结果 ---');
   const okLines = shops.filter((s) => s.ok).map((s) => {
     const preview = s.cookiePreview ? ` ${s.cookiePreview}` : '';
-    return `${s.shopName} ✓${preview}`;
+    const probe =
+      s.probeQualityOk === true ? ' [探针✓]' : s.probeQualityOk === false ? ' [探针✗]' : '';
+    return `${s.shopName} ✓${probe}${preview}`;
   });
-  const failLines = shops.filter((s) => !s.ok).map((s) => `${s.shopName} ✗ ${s.message || '失败'}`);
+  const failLines = shops.filter((s) => !s.ok).map((s) => {
+    const phase =
+      s.phase === 'probe' ? '探针' : s.phase === 'harvest' ? '采集' : s.harvestOk === false ? '采集' : '上传';
+    return `${s.shopName} ✗ [${phase}] ${s.message || '失败'}`;
+  });
   const summary = result.ok
     ? `Cookie 提交成功（${result.success || okLines.length}/4）`
     : `Cookie 提交${(result.success || 0) > 0 ? '部分成功' : '失败'}（${result.success || 0}/4）`;
-  return [summary, ...okLines, ...failLines].join('\n');
+  return [summary, ...lines, ...okLines, ...failLines].join('\n');
 }
 
 async function handleUploadShopCookies() {
@@ -827,6 +842,9 @@ async function handleUploadShopCookies() {
   showToast('正在提交四店 Cookie…');
   try {
     const result = await window.qianfanApp.uploadShopCookies();
+    if (Array.isArray(result?.logs)) {
+      for (const row of result.logs) addActivity(row);
+    }
     const feedback = formatShopCookieFeedback(result);
     addActivity(feedback);
     state.lastMessage = feedback.split('\n')[0];

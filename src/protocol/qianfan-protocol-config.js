@@ -123,8 +123,19 @@ function findProtocolShopConfig(shopTitle, options = {}) {
     const localPath = localConfigPath();
     if (fs.existsSync(localPath)) {
       const all = readJsonFile(localPath);
-      const hit = all.find((s) => s && String(s.shopTitle || '').trim() === title);
-      if (hit) {
+      const hits = all.filter((s) => s && String(s.shopTitle || '').trim() === title);
+      if (hits.length) {
+        const score = (s) => {
+          let n = 0;
+          if (s?.ws?.authTemplate?.body?.uid) n += 50;
+          if (s?.httpAuthHeaders?.authorization) n += 30;
+          if (s?.testTarget?.appCid) n += 20;
+          if (s?.manualSamples?.textSendPayload?.body) n += 10;
+          if (s?.httpTemplates?.messageList?.url) n += 10;
+          if (String(s.cookie || '').length) n += 5;
+          return n;
+        };
+        const hit = hits.sort((a, b) => score(b) - score(a))[0];
         return {
           ...hit,
           shopTitle: title,

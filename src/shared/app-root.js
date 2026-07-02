@@ -21,7 +21,8 @@ function detectPackagedExeDir() {
 
 function initAppRoot(electronApp) {
   if (electronApp?.isPackaged) {
-    process.env.QIANFAN_APP_ROOT = path.dirname(electronApp.getPath('exe'));
+    const portableDir = detectPortableDir();
+    process.env.QIANFAN_APP_ROOT = portableDir || path.dirname(electronApp.getPath('exe'));
     process.env.QIANFAN_RUNTIME_ROOT = electronApp.getAppPath();
   }
   projectRootCache = null;

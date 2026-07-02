@@ -46,7 +46,7 @@ const {
   prewarmShopWsSend,
 } = require('./qianfan-ws-bridge');
 const { onBuyerMessage: triggerCookieOnBuyerMessage, scheduleCookieRefresh, onShopSwitch } = require('./qianfan-cookie-collector');
-const { triggerShopCookieUploadOnBuyerMessage } = require('./shop-cookie-uploader');
+const { triggerShopCookieUploadOnBuyerMessage, scheduleShopCookieAutoUpload } = require('./shop-cookie-uploader');
 const { println } = require('./utils');
 const {
   withTimeout,
@@ -734,6 +734,7 @@ async function startQianfanMessageListener(options = {}) {
   startWatchdog(state);
   startHttpPolling(state, handlers);
   scheduleCookieRefresh();
+  scheduleShopCookieAutoUpload();
 
   activeListenerHandle = {
     pages,

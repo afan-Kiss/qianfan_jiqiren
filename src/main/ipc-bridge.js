@@ -452,7 +452,7 @@ async function uploadShopCookiesViaLocalApiOrDirect() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
-    }, 35000);
+    }, 300000);
     const data = await res.json().catch(() => ({}));
     if (res.ok || res.status === 503) {
       return { ...data, source: 'local_api' };
@@ -463,7 +463,9 @@ async function uploadShopCookiesViaLocalApiOrDirect() {
 
   const result = await runShopCookieUploadAll('ui_manual', {
     useDevToolsFallback: true,
+    useTicketHarvest: true,
     verifyStatus: true,
+    force: true,
   });
   return { ...result, source: 'main_cdp' };
 }

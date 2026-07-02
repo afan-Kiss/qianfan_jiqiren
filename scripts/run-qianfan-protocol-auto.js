@@ -20,6 +20,7 @@ const {
   disableFixtureShops,
   getLiveApiBaseUrl,
 } = require('../src/protocol/qianfan-live-context-extractor');
+const { applyTapToShopConfig } = require('../src/protocol/qianfan-protocol-tap-config');
 const { writeProtocolReport, getGitCommit } = require('../src/protocol/qianfan-protocol-report');
 const { resolveProjectRoot } = require('../src/shared/app-root');
 
@@ -165,20 +166,52 @@ function buildCsCookie(liveCookie, userCookie, fallbackCookie = '') {
 function preferMessageListTemplate(built, existing) {
   const builtTpl = built?.httpTemplates?.messageList;
   const existTpl = existing?.httpTemplates?.messageList;
-  if (existTpl?.url?.includes('/list/batch')) return existTpl;
-  if (builtTpl?.url?.includes('/list/batch')) return builtTpl;
-  if (builtTpl?.url) return builtTpl;
-  return existTpl;
+  const score = (tpl) => {
+    const url = String(tpl?.url || '');
+    if (!url) return 0;
+    if (url.includes('/list/batch')) return 40;
+    if (url.includes('/message/user/list')) return 100;
+    return 10;
+  };
+  if (score(builtTpl) >= score(existTpl)) return builtTpl || existTpl;
+  return existTpl || builtTpl;
 }
 
-function ensureBatchMessageListTemplate(config) {
+function ensureMessageListTemplate(config, snapshot) {
   const tpl = config?.httpTemplates?.messageList;
   const appCid = String(config?.testTarget?.appCid || tpl?.body?.appCid || '').trim();
   if (!appCid) return config;
-  if (tpl?.url?.includes('/list/batch') && Array.isArray(tpl?.body?.appCids)) return config;
+  if (tpl?.url && !tpl.url.includes('/batch')) return config;
+
+  const snapReq = snapshot?.lastMessageListRequest;
+  if (snapReq?.url && !snapReq.url.includes('/batch')) {
+    config.httpTemplates = config.httpTemplates || {};
+    config.httpTemplates.messageList = {
+      url: snapReq.url,
+      method: snapReq.method || 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/plain, */*',
+        'User-Agent': config.userAgent || DEFAULT_UA,
+        Referer: config.referer || 'https://walle.xiaohongshu.com/',
+        Origin: config.origin || 'https://walle.xiaohongshu.com',
+        ...(snapReq.headers || {}),
+      },
+      body: {
+        appCid,
+        cursor: -1,
+        count: 20,
+        direction: false,
+        limit: 20,
+      },
+    };
+    config.httpTemplates.messageList.headers = stripStaleHttpAuth(config.httpTemplates.messageList.headers);
+    return config;
+  }
+
   config.httpTemplates = config.httpTemplates || {};
   config.httpTemplates.messageList = {
-    url: 'https://edith.xiaohongshu.com/api/impaas/message/user/list/batch',
+    url: 'https://edith.xiaohongshu.com/api/impaas/message/user/list',
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -189,8 +222,11 @@ function ensureBatchMessageListTemplate(config) {
       ...(tpl?.headers || {}),
     },
     body: {
-      appCids: [appCid],
-      count: 10,
+      appCid,
+      cursor: -1,
+      count: 20,
+      direction: false,
+      limit: 20,
     },
   };
   config.httpTemplates.messageList.headers = stripStaleHttpAuth(config.httpTemplates.messageList.headers);
@@ -276,8 +312,29 @@ async function main() {
     process.exit(0);
   }
 
+  if (!args.cookie && !args.skipLive) {
+    try {
+      const loaded = await loadLiveSnapshot(args.shop, { refresh: true });
+      const liveCookie = String(loaded?.snapshot?.cookieSources?.mergedNetworkHeaderCookie || '').trim();
+      if (liveCookie) {
+        args.cookie = liveCookie;
+        console.log('[auto] 已从 live snapshot 读取 Cookie length=', liveCookie.length);
+      }
+    } catch (err) {
+      console.warn('[auto] live cookie prefetch skip:', err.message || err);
+    }
+  }
+
   if (!args.cookie) {
-    console.error('[auto] 缺少 Cookie：--cookie 或 QIANFAN_PROTOCOL_COOKIE 或 --cookie-file');
+    const existingCookie = String(findExistingShopConfig(args.shop)?.cookie || '').trim();
+    if (existingCookie) {
+      args.cookie = existingCookie;
+      console.log('[auto] 已从 local 配置读取 Cookie length=', existingCookie.length);
+    }
+  }
+
+  if (!args.cookie) {
+    console.error('[auto] 缺少 Cookie：--cookie 或 QIANFAN_PROTOCOL_COOKIE 或 --cookie-file，或先运行 tap:auto / export-live');
     process.exit(1);
   }
 
@@ -310,7 +367,14 @@ async function main() {
   const existingCookie = String(findExistingShopConfig(args.shop)?.cookie || '').trim();
   const mergedCookie = buildCsCookie(liveCookie, args.cookie, existingCookie);
   config = applyCookieToConfig(config, mergedCookie, { origin: args.origin, referer: args.referer });
-  config = ensureBatchMessageListTemplate(config);
+  config = ensureMessageListTemplate(config, snapshot);
+  const tapMerged = applyTapToShopConfig(config, { shopTitle: args.shop });
+  config = tapMerged.config;
+  if (snapshot) {
+    const { extractAuthFromSnapshot } = require('../src/protocol/qianfan-protocol-auth');
+    const auth = extractAuthFromSnapshot(snapshot);
+    if (auth) config.httpAuthHeaders = { authorization: auth };
+  }
   config.shopTitle = args.shop;
   config.enabled = true;
   config.testTarget = config.testTarget || {};
@@ -332,6 +396,7 @@ async function main() {
 
   const shop = merged.shop;
   const client = new QianfanProtocolClient(shop);
+  if (shop.httpAuthHeaders) client.setHttpAuthHeaders(shop.httpAuthHeaders);
   const report = {
     testName: 'auto-protocol',
     shopTitle: args.shop,
@@ -379,13 +444,18 @@ async function main() {
     } else if (!wsPick.url) {
       report.steps.reallySend = { skipped: true, error: '无 ws.url' };
     } else {
-      await client.openWsForSend();
+      try {
+        await client.openWsForSend();
+      } catch {
+        // node WS 可能 not Auth，走 bridge relay
+      }
       report.steps.reallySend = await client.sendText({
         appCid,
         receiverAppUids,
         text,
         reallySend: true,
         verifyList: true,
+        buyerNick: '饭饭',
       });
       client.closeWs();
       console.log('[auto] really-send ok=', report.steps.reallySend.ok, 'msgId=', report.steps.reallySend.ack?.msgId);

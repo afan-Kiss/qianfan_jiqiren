@@ -31,7 +31,8 @@ async function main() {
   );
 
   assert.match(launcherSource, /killQianfanClientIfNotInDebugMode/);
-  assert.match(launcherSource, /千帆已在调试模式运行，不会结束进程/);
+  assert.match(launcherSource, /mainProcessHasAnyDebugPortArg/);
+  assert.match(launcherSource, /千帆主进程已带调试参数/);
   assert.match(launcherSource, /ensureQianfanDevToolsReady[\s\S]*killQianfanClientIfNotInDebugMode/);
   assert.doesNotMatch(cleanupSource, /killExistingQianfanClient/);
   assert.match(cleanupSource, /killQianfan:\s*false/);

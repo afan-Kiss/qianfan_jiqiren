@@ -317,6 +317,8 @@ function pickImageSendSample(snapshot, appCid) {
   return { payload: null, source: '' };
 }
 
+const { extractAuthFromSnapshot } = require('./qianfan-protocol-auth');
+
 function pickMessageListTemplate(snapshot) {
   if (snapshot?.lastMessageListRequest?.url) {
     return { template: snapshot.lastMessageListRequest, source: 'lastMessageListRequest' };
@@ -325,8 +327,8 @@ function pickMessageListTemplate(snapshot) {
   const keys = Object.keys(templates).filter((k) => /message\/user\/list|latest\/content|unchecked\/ai\/msg/i.test(k));
   keys.sort((a, b) => {
     const score = (k) => {
-      if (k.includes('/api/impaas/message/user/list/batch')) return 100;
-      if (k.includes('/api/impaas/message/user/list')) return 90;
+      if (k.includes('/api/impaas/message/user/list') && !k.includes('/batch')) return 100;
+      if (k.includes('/api/impaas/message/user/list/batch')) return 50;
       return 10;
     };
     return score(b) - score(a);
@@ -418,6 +420,8 @@ function buildLiveProtocolConfig(snapshot, options = {}) {
   const textSample = pickTextSendSample(snapshot, appCidPick.value);
   const receiverPick = pickReceiverAppUids(snapshot, appCidPick.value, textSample, options);
   const messageListPick = pickMessageListTemplate(snapshot);
+  const authHeader = extractAuthFromSnapshot(snapshot);
+  const httpAuthHeaders = authHeader ? { authorization: authHeader, Authorization: authHeader } : {};
   const imageUploadPick = pickImageUploadTemplate(snapshot);
   const imageSample = pickImageSendSample(snapshot, appCidPick.value);
 
@@ -447,6 +451,8 @@ function buildLiveProtocolConfig(snapshot, options = {}) {
     userAgent,
     origin,
     referer,
+    httpAuthHeaders,
+    lastSeq: Number(snapshot?.lastSeq || 0),
     ws: {
       url: wsCandidate?.url || '',
       headers: cleanWsHeaders(reqHeaders, cookie, userAgent, origin),
@@ -514,7 +520,10 @@ function buildLiveProtocolConfig(snapshot, options = {}) {
 function readExistingLocalConfig() {
   const p = localConfigPath();
   if (!fs.existsSync(p)) return [];
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+  const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.shops)) return data.shops;
+  return [];
 }
 
 function mergeShopIntoLocal(existingAll, config, shopTitle, force = false) {
@@ -537,6 +546,14 @@ function mergeShopIntoLocal(existingAll, config, shopTitle, force = false) {
   mergeField(shop, 'userAgent', config.userAgent);
   mergeField(shop, 'origin', config.origin);
   mergeField(shop, 'referer', config.referer);
+  if (config.httpAuthHeaders && Object.keys(config.httpAuthHeaders).length) {
+    shop.httpAuthHeaders = config.httpAuthHeaders;
+    written.push('httpAuthHeaders');
+  }
+  if (config.lastSeq) {
+    shop.lastSeq = config.lastSeq;
+    written.push('lastSeq');
+  }
 
   shop.ws = shop.ws || {};
   mergeField(shop.ws, 'url', config.ws?.url);

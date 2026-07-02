@@ -260,7 +260,7 @@ const qianfanDebug = {
   qianfanClientWorkingDir: String(qianfanDebugFile.qianfanClientWorkingDir || resolvedQianfanPaths.qianfanClientWorkingDir).trim(),
   qianfanClientProcessName: String(qianfanDebugFile.qianfanClientProcessName || '千帆客服工作台.exe').trim(),
   autoLaunchQianfanClientWhenMissing: qianfanDebugFile.autoLaunchQianfanClientWhenMissing !== false,
-  autoCloseExistingQianfanClient: qianfanDebugFile.autoCloseExistingQianfanClient !== false,
+  autoCloseExistingQianfanClient: qianfanDebugFile.autoCloseExistingQianfanClient === true,
   expectedShopCount: pickNum('expectedShopCount', qianfanDebugFile.expectedShopCount || 4),
   qianfanClientArgs: Array.isArray(qianfanDebugFile.qianfanClientArgs) ? qianfanDebugFile.qianfanClientArgs : undefined,
   urls:
@@ -275,6 +275,12 @@ const qianfanDebug = {
   ),
   wsWakeBuyerNick: String(qianfanDebugFile.wsWakeBuyerNick || '饭饭').trim(),
   wsWakeText: String(qianfanDebugFile.wsWakeText || '亲亲').trim() || '亲亲',
+  protocolTapEnabled:
+    process.env.QIANFAN_PROTOCOL_TAP === '1'
+      ? true
+      : process.env.QIANFAN_PROTOCOL_TAP === '0'
+        ? false
+        : qianfanDebugFile.protocolTapEnabled === true,
   sendOnlyBuyerNick:
     process.env.QIANFAN_SEND_ONLY_BUYER_NICK !== undefined
       ? String(process.env.QIANFAN_SEND_ONLY_BUYER_NICK).trim()
@@ -294,6 +300,12 @@ const shopCookieUpload = {
   statusPath: String(shopCookieUploadFile.statusPath || '/api/shop-cookies/status').trim() || '/api/shop-cookies/status',
   uploadToken: String(process.env.SHOP_COOKIE_UPLOAD_TOKEN || shopCookieUploadFile.uploadToken || '').trim(),
   timeoutMs: pickNum('shopCookieUploadTimeoutMs', shopCookieUploadFile.timeoutMs || 20000),
+  autoUploadIntervalHours: pickNum('shopCookieAutoUploadHours', shopCookieUploadFile.autoUploadIntervalHours ?? 0),
+  autoUploadEnabled: shopCookieUploadFile.autoUploadEnabled === true,
+  useTicketHarvest: shopCookieUploadFile.useTicketHarvest !== false,
+  analystAppRoot: String(
+    process.env.ANALYST_APP_ROOT || shopCookieUploadFile.analystAppRoot || ''
+  ).trim(),
 };
 
 const controlCenterFile = fileCfg.controlCenter || {};

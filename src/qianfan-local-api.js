@@ -89,6 +89,7 @@ async function startQianfanLocalApi(options = {}) {
         try {
           const result = await runShopCookieUploadAll('local_api', {
             force: true,
+            useTicketHarvest: true,
             verifyStatus: true,
           });
           sendJson(res, result.ok ? 200 : 503, result);

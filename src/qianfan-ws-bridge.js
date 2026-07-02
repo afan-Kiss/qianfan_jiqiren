@@ -57,6 +57,16 @@ const { triggerNativeSyncAfterAck, installNativeSyncBridge } = require('./qianfa
 const { println } = require('./utils');
 const { cdpRuntimeEvaluate, withTimeout, cdpAddScriptToEvaluateOnNewDocument, cdpNetworkEnable, cdpNetworkDisable, cdpNetworkSendWebSocketFrame } = require('./cdp-timeout');
 const { logBotSendLifecycle, summarizePayload } = require('./capture/bot-send-debug');
+const {
+  maybeTapHttpRequest,
+  maybeTapHttpResponse,
+  maybeTapHttpLoadingFinished,
+  maybeTapWsCreated,
+  maybeTapWsHandshakeRequest,
+  maybeTapWsHandshakeResponse,
+  maybeTapWsFrame,
+  logProtocolTapStartup,
+} = require('./capture/qianfan-protocol-tap');
 
 const bridges = new Map();
 const shopWakeReconnect = new Map();
@@ -1681,6 +1691,7 @@ async function registerQianfanWsBridge(pageInfo, client) {
   Network.webSocketCreated(({ requestId, url }) => {
     const wsUrl = String(url || '');
     bridge.wsUrls.set(requestId, wsUrl);
+    maybeTapWsCreated(bridge, { requestId, url: wsUrl });
     if (wsUrl.includes('impaas') || wsUrl.includes('longlink') || wsUrl.includes('walle')) {
       try {
         const { onWsConnected } = require('./qianfan-cookie-collector');
@@ -1703,22 +1714,25 @@ async function registerQianfanWsBridge(pageInfo, client) {
     });
   });
 
-  Network.requestWillBeSent(({ request }) => {
-    captureHttpTemplate(bridge, request);
-    const reqUrl = String(request?.url || '');
+  Network.requestWillBeSent((params) => {
+    maybeTapHttpRequest(bridge, params);
+    captureHttpTemplate(bridge, params.request);
+    const reqUrl = String(params?.request?.url || '');
     if (reqUrl) bridge.lastSeenUrl = reqUrl;
-    const cookieHeader = request?.headers?.Cookie || request?.headers?.cookie || '';
+    const cookieHeader = params?.request?.headers?.Cookie || params?.request?.headers?.cookie || '';
     if (cookieHeader) {
       try {
         const { noteBridgeRequestCookie } = require('./qianfan-cookie-collector');
-        noteBridgeRequestCookie(bridge, cookieHeader, String(request?.url || ''));
+        noteBridgeRequestCookie(bridge, cookieHeader, String(params?.request?.url || ''));
       } catch {
         // ignore cookie collector errors
       }
     }
   });
 
-  Network.responseReceived(({ response }) => {
+  Network.responseReceived((params) => {
+    maybeTapHttpResponse(bridge, params);
+    const response = params?.response || {};
     const status = Number(response?.status || 0);
     if (status === 401 || status === 403) {
       try {
@@ -1731,9 +1745,18 @@ async function registerQianfanWsBridge(pageInfo, client) {
   });
 
   try {
+    Network.loadingFinished((params) => {
+      void maybeTapHttpLoadingFinished(bridge, params);
+    });
+  } catch {
+    // ignore
+  }
+
+  try {
     Network.webSocketWillSendHandshakeRequest(({ requestId, request }) => {
       try {
         const url = String(bridge.wsUrls.get(requestId) || request?.url || '');
+        maybeTapWsHandshakeRequest(bridge, requestId, request, url);
         if (!isRelevantProtocolWsUrl(url)) return;
         bridge.wsHandshakeHeaders.set(requestId, {
           requestId,
@@ -1753,6 +1776,7 @@ async function registerQianfanWsBridge(pageInfo, client) {
     Network.webSocketHandshakeResponseReceived(({ requestId, response }) => {
       try {
         const url = String(bridge.wsUrls.get(requestId) || '');
+        maybeTapWsHandshakeResponse(bridge, requestId, response, url);
         if (!isRelevantProtocolWsUrl(url)) return;
         bridge.wsHandshakeResponses.set(requestId, {
           requestId,
@@ -1774,8 +1798,10 @@ async function registerQianfanWsBridge(pageInfo, client) {
     if (!payload) return;
     if (payload === 'ping' || payload === 'pong') {
       noteWsHeartbeatFrame(bridge, payload, 'received', params.requestId);
+      maybeTapWsFrame(bridge, payload, 'received', params.requestId);
       return;
     }
+    maybeTapWsFrame(bridge, payload, 'received', params.requestId);
     dispatchFrameListeners(bridge, payload, 'received', params.requestId);
   });
 
@@ -1784,10 +1810,14 @@ async function registerQianfanWsBridge(pageInfo, client) {
     if (!payload) return;
     if (payload === 'ping' || payload === 'pong') {
       noteWsHeartbeatFrame(bridge, payload, 'sent', params.requestId);
+      maybeTapWsFrame(bridge, payload, 'sent', params.requestId);
       return;
     }
+    maybeTapWsFrame(bridge, payload, 'sent', params.requestId);
     dispatchFrameListeners(bridge, payload, 'sent', params.requestId);
   });
+
+  logProtocolTapStartup();
 
   bridges.set(shopTitle, bridge);
   bridges.set(normalizeShopKey(shopTitle), bridge);
@@ -2456,7 +2486,17 @@ async function enrichAndBuildQianfanProtocolSnapshot(shopTitle, options = {}) {
   const enrichNotes = [];
   let mergedCookie = String(snapshot.cookieSources?.mergedNetworkHeaderCookie || '');
 
-  if (!mergedCookie || mergedCookie.length < 20) {
+  let needsJarCollect = !mergedCookie || mergedCookie.length < 20;
+  if (!needsJarCollect) {
+    try {
+      const { cookieContainsWalleToken } = require('./qianfan-full-cookie-collect');
+      if (!cookieContainsWalleToken(mergedCookie)) needsJarCollect = true;
+    } catch {
+      // ignore
+    }
+  }
+
+  if (needsJarCollect) {
     try {
       const { collectFullCookiesFromBridge } = require('./qianfan-full-cookie-collect');
       const collected = await collectFullCookiesFromBridge(bridge, {
@@ -2613,6 +2653,7 @@ module.exports = {
   buildQianfanProtocolSnapshot,
   enrichAndBuildQianfanProtocolSnapshot,
   probePageImpaasWsUrls,
+  tryPageWsSend,
   normalizeShopKey,
   HTTP_CAPTURE_PATHS,
 };

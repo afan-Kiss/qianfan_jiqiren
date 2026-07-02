@@ -81,9 +81,12 @@
     "qf:protocol:tap:status": "node scripts/qianfan-protocol-tap-status.js",
     "qf:protocol:tap:bundle": "node scripts/bundle-qianfan-protocol-tap.js",
     "qf:protocol:tap:auto": "node scripts/run-qianfan-protocol-tap-auto.js",
+    "qf:protocol:tap:full": "node scripts/run-qianfan-protocol-tap-full.js",
     "qf:protocol:im": "node scripts/run-qianfan-protocol-im.js",
     "qf:protocol:pure": "node scripts/run-qianfan-protocol-pure.js",
     "qf:protocol:daemon": "node scripts/qianfan-protocol-daemon.js",
+    "qf:protocol:bootstrap-tap": "node scripts/bootstrap-protocol-shops-from-tap.js",
+    "qf:protocol:triple-reply": "node scripts/bootstrap-protocol-shops-from-tap.js && node scripts/run-qianfan-protocol-triple-auto-reply.js",
     "qf:protocol:config-agent": "node scripts/qianfan-protocol-config-agent.js",
     "check:qianfan-protocol-daemon": "node scripts/check-qianfan-protocol-daemon.js"
   },

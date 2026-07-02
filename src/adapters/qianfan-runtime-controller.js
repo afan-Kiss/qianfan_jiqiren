@@ -51,7 +51,7 @@ function resolveConfig(cfg = {}) {
     devtoolsPort: port,
     devtoolsHost: host,
     autoLaunchQianfanClientWhenMissing: cfg.autoLaunchQianfanClientWhenMissing !== false,
-    autoCloseExistingQianfanClient: cfg.autoCloseExistingQianfanClient !== false,
+    autoCloseExistingQianfanClient: cfg.autoCloseExistingQianfanClient === true,
     qianfanClientExePath: String(cfg.qianfanClientExePath || DEFAULT_CLIENT_EXE).trim(),
     qianfanClientWorkingDir: String(cfg.qianfanClientWorkingDir || DEFAULT_CLIENT_DIR).trim(),
     qianfanClientProcessName: String(cfg.qianfanClientProcessName || '千帆客服工作台.exe').trim(),

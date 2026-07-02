@@ -9,11 +9,17 @@ const { println } = require('./utils');
 const { resolveProjectRoot } = require('./shared/app-root');
 const {
   DEFAULT_DEVTOOLS_PORT,
+  LEGACY_DEVTOOLS_PORT,
+  FALLBACK_DEVTOOLS_PORTS,
   buildPortExcludedError,
   isWindowsPortExcluded,
   resolveDevToolsPort,
   suggestDevToolsPort,
 } = require('./shared/windows-devtools-port');
+const {
+  setDetectedDevToolsPort,
+  resolveEffectiveDevToolsPort,
+} = require('./shared/qianfan-devtools-port-runtime');
 
 const DEFAULT_CLIENT_EXE = 'E:\\千帆\\eva\\千帆客服工作台.exe';
 const DEFAULT_CLIENT_DIR = 'E:\\千帆\\eva';
@@ -28,7 +34,8 @@ function buildDefaultClientArgs(port) {
 }
 
 function resolveClientConfig(cfg = {}) {
-  const portResolution = resolveDevToolsPort(cfg.devtoolsPort);
+  const configuredPort = resolveEffectiveDevToolsPort(cfg.devtoolsPort);
+  const portResolution = resolveDevToolsPort(configuredPort);
   const port = portResolution.port;
   const host = cfg.devtoolsHost || '127.0.0.1';
   const defaultArgs = buildDefaultClientArgs(port);
@@ -50,7 +57,7 @@ function resolveClientConfig(cfg = {}) {
     devtoolsPortAdjusted: portResolution.adjusted === true,
     devtoolsHost: host,
     autoLaunchQianfanClientWhenMissing: cfg.autoLaunchQianfanClientWhenMissing !== false,
-    autoCloseExistingQianfanClient: cfg.autoCloseExistingQianfanClient !== false,
+    autoCloseExistingQianfanClient: cfg.autoCloseExistingQianfanClient === true,
     qianfanClientExePath: String(cfg.qianfanClientExePath || DEFAULT_CLIENT_EXE).trim(),
     qianfanClientWorkingDir: String(cfg.qianfanClientWorkingDir || DEFAULT_CLIENT_DIR).trim(),
     qianfanClientProcessName: String(cfg.qianfanClientProcessName || DEFAULT_CLIENT_PROCESS).trim(),
@@ -156,6 +163,59 @@ function mainProcessHasDebugPortArg(config, port = config.devtoolsPort) {
     .some((line) => pattern.test(line));
 }
 
+function parseDebugPortsFromText(text) {
+  const ports = [];
+  const re = /remote-debugging-port=(\d+)/gi;
+  let match;
+  while ((match = re.exec(String(text || ''))) !== null) {
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value > 0) ports.push(value);
+  }
+  return ports;
+}
+
+function listQianfanProcessDebugPorts(config) {
+  const ports = [];
+  for (const line of listQianfanMainProcessCommandLines(config.qianfanClientProcessName)) {
+    ports.push(...parseDebugPortsFromText(line));
+  }
+  return [...new Set(ports)];
+}
+
+function mainProcessHasAnyDebugPortArg(config) {
+  return listQianfanProcessDebugPorts(config).length > 0;
+}
+
+function collectDevToolsProbePorts(config) {
+  const ports = [
+    config.devtoolsPort,
+    ...listQianfanProcessDebugPorts(config),
+    LEGACY_DEVTOOLS_PORT,
+    ...FALLBACK_DEVTOOLS_PORTS,
+  ];
+  return [...new Set(ports.filter((value) => Number.isFinite(value) && value > 0))];
+}
+
+async function probeDevToolsOnPorts(config, ports = null) {
+  const tryPorts = ports || collectDevToolsProbePorts(config);
+  for (const port of tryPorts) {
+    const probe = await probeDevTools({ ...config, devtoolsPort: port });
+    if (probe.ok) {
+      setDetectedDevToolsPort(port);
+      return { ...probe, devtoolsPort: port, matchedPort: port };
+    }
+  }
+  return { ok: false, reason: 'unreachable', triedPorts: tryPorts };
+}
+
+function rememberDevToolsProbe(probe) {
+  if (probe?.ok && probe.devtoolsPort) {
+    setDetectedDevToolsPort(probe.devtoolsPort);
+  } else if (probe?.matchedPort) {
+    setDetectedDevToolsPort(probe.matchedPort);
+  }
+}
+
 async function waitForDevToolsAttach(config, options = {}, logFn = null) {
   const log = createLaunchLogger(logFn);
   const timeoutMs = Number(
@@ -224,26 +284,33 @@ async function killQianfanClientIfNotInDebugMode(rawConfig, options = {}) {
     return { killed: false, reason: 'not_running' };
   }
 
-  const probe = await probeDevTools(config);
-  if (probe.ok) {
-    log('info', '[千帆] 千帆已在调试模式运行，不会结束进程');
-    return { killed: false, reason: 'debug_mode', probe };
+  const multiProbe = await probeDevToolsOnPorts(config);
+  if (multiProbe.ok) {
+    log(
+      'info',
+      `[千帆] 千帆已在调试模式运行（DevTools ${multiProbe.devtoolsPort}），不会结束进程`,
+    );
+    return { killed: false, reason: 'debug_mode', probe: multiProbe };
+  }
+
+  if (mainProcessHasAnyDebugPortArg(config)) {
+    const ports = listQianfanProcessDebugPorts(config);
+    log(
+      'info',
+      `[千帆] 千帆主进程已带调试参数（端口 ${ports.join('/')}），等待 DevTools 就绪（不会结束进程）`,
+    );
+    return { killed: false, reason: 'debug_launch_pending', debugPorts: ports };
   }
 
   if (config.autoCloseExistingQianfanClient === false) {
     return {
       killed: false,
       reason: 'auto_close_disabled',
-      lastError: `千帆已运行但未开启调试端口 ${config.devtoolsPort}，请关闭后重试`,
+      lastError: `千帆已运行但未检测到 DevTools，已禁用自动关闭（已尝试端口 ${collectDevToolsProbePorts(config).join(', ')}）`,
     };
   }
 
-  if (mainProcessHasDebugPortArg(config)) {
-    log('info', `[千帆] 千帆主进程已带调试参数，等待 DevTools ${config.devtoolsPort} 就绪（不会重复结束进程）`);
-    return { killed: false, reason: 'debug_launch_pending' };
-  }
-
-  log('info', '[千帆] 千帆已在运行但未开启调试端口，正在关闭并以调试模式重新启动…');
+  log('info', '[千帆] 千帆已在运行但未检测到 DevTools，正在关闭并以调试模式重新启动…');
   const stopResult = await forceStopQianfanClient(
     config.qianfanClientProcessName,
     options.closeWaitMs || config.closeWaitMs || 12000,
@@ -365,10 +432,31 @@ async function launchQianfanClient(rawConfig, logFn = println) {
   }
 
   if (countQianfanProcesses(config.qianfanClientProcessName) > 0) {
-    if (mainProcessHasDebugPortArg(config)) {
+    const existingProbe = await probeDevToolsOnPorts(config);
+    if (existingProbe.ok) {
+      log(
+        'info',
+        `[千帆] 千帆已在调试模式运行（DevTools ${existingProbe.devtoolsPort}），跳过重复拉起`,
+      );
+      return {
+        ok: true,
+        method: 'attach-existing',
+        processStarted: true,
+        devtoolsReady: true,
+        probe: existingProbe,
+        pageCount: existingProbe.pageCount,
+        list: existingProbe.list,
+      };
+    }
+    if (mainProcessHasAnyDebugPortArg(config)) {
       log('info', '[千帆] 检测到千帆已在调试模式启动中，跳过重复拉起');
-      const waitResult = await waitForDevToolsAttach(config, {}, logFn);
+      const waitConfig = resolveClientConfig({
+        ...rawConfig,
+        devtoolsPort: listQianfanProcessDebugPorts(config)[0] || config.devtoolsPort,
+      });
+      const waitResult = await waitForDevToolsAttach(waitConfig, {}, logFn);
       if (waitResult.ok) {
+        rememberDevToolsProbe(waitResult.probe);
         return {
           ok: true,
           method: 'attach-pending',
@@ -381,10 +469,16 @@ async function launchQianfanClient(rawConfig, logFn = println) {
       }
       return {
         ok: false,
-        error: `千帆已带调试参数启动，但 DevTools ${config.devtoolsPort} 等待超时。请确认千帆已登录并完成店铺工作台加载`,
+        error: `千帆已带调试参数启动，但 DevTools 等待超时。请确认千帆已登录并完成店铺工作台加载（已尝试端口 ${collectDevToolsProbePorts(config).join(', ')}）`,
         method: 'attach-pending',
         processStarted: true,
         processCount: countQianfanProcesses(config.qianfanClientProcessName),
+      };
+    }
+    if (config.autoCloseExistingQianfanClient === false) {
+      return {
+        ok: false,
+        error: `千帆已在运行但未检测到 DevTools，且已禁用自动关闭。请手动以调试模式启动或修改 devtoolsPort`,
       };
     }
     const stopResult = await forceStopQianfanClient(
@@ -485,10 +579,12 @@ function launchQianfanClientViaCmdStart(config) {
 
 async function waitForDevTools(config) {
   const startedAt = Date.now();
+  const probePorts = collectDevToolsProbePorts(config);
 
   while (Date.now() - startedAt < config.waitTimeoutMs) {
-    const probe = await probeDevTools(config);
+    const probe = await probeDevToolsOnPorts(config, probePorts);
     if (probe.ok) {
+      rememberDevToolsProbe(probe);
       return {
         ok: true,
         devtoolsAccessible: true,
@@ -515,8 +611,9 @@ async function waitForDevTools(config) {
 
 async function waitForLaunchSignal(config, timeoutMs = 20000) {
   const started = Date.now();
+  const probePorts = collectDevToolsProbePorts(config);
   while (Date.now() - started < timeoutMs) {
-    const probe = await probeDevTools(config);
+    const probe = await probeDevToolsOnPorts(config, probePorts);
     if (probe.ok) {
       return { ok: true, via: 'devtools', probe };
     }
@@ -575,9 +672,9 @@ async function ensureQianfanDevToolsReady(cfg, options = {}) {
     };
   }
 
-  const firstProbe = await probeDevTools(config);
+  const firstProbe = await probeDevToolsOnPorts(config);
   if (firstProbe.ok) {
-    log('info', `[千帆] DevTools ${config.devtoolsPort}：可访问`);
+    log('info', `[千帆] DevTools ${firstProbe.devtoolsPort}：可访问`);
     return {
       ok: true,
       phase: 'attached',
@@ -586,6 +683,7 @@ async function ensureQianfanDevToolsReady(cfg, options = {}) {
       probe: firstProbe,
       pageCount: firstProbe.pageCount,
       list: firstProbe.list,
+      devtoolsPort: firstProbe.devtoolsPort,
     };
   }
 
@@ -601,7 +699,7 @@ async function ensureQianfanDevToolsReady(cfg, options = {}) {
   if (
     !firstProbe.ok
     && isQianfanProcessRunning(config.qianfanClientProcessName)
-    && mainProcessHasDebugPortArg(config)
+    && mainProcessHasAnyDebugPortArg(config)
   ) {
     if (!canLaunch) {
       return {

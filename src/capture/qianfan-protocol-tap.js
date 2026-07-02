@@ -11,8 +11,12 @@ const { parseMaybeJson, extractBuyerMessagesFromWsPayload } = require('../chat-p
 const { println } = require('../utils');
 
 const TAP_URL_RE =
-  /xiaohongshu|longlink|impaas|walle|edith|ark\.xiaohongshu|qianfan|fulfillment/i;
+  /xiaohongshu|longlink|impaas|walle|edith|ark\.xiaohongshu|qianfan|fulfillment|login2?\.|passport|customer\/login|\/sso|account\.xiaohongshu|sns\/web\/v\d+\/login|qrcode|scan\/login/i;
 const STATIC_ASSET_RE = /\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|css|map)(\?|$)/i;
+const CONSOLE_NOISE_URL_RE =
+  /fe-static\.xhscdn\.com|apm-fe\.xiaohongshu\.com|spider-tracker\.xiaohongshu\.com|apm-track/i;
+const LOGIN_API_URL_RE =
+  /customer\.xiaohongshu|login2?\.xiaohongshu|passport|\/cas\/|qrcode|scan\/login|sns\/web.*login|service-ticket|\/sso|account\.xiaohongshu/i;
 
 const pendingHttpBodies = new Map();
 const tapStateByShop = new Map();
@@ -65,6 +69,53 @@ function cookieKeyPreview(cookie) {
   return [...new Set(keys)].slice(0, 24);
 }
 
+function isLoginOrAuthUrl(url) {
+  const u = String(url || '').toLowerCase();
+  return (
+    u.includes('/login') ||
+    u.includes('passport') ||
+    u.includes('/auth') ||
+    u.includes('/sso') ||
+    u.includes('login.xiaohongshu') ||
+    u.includes('login2.xiaohongshu') ||
+    u.includes('account.xiaohongshu') ||
+    u.includes('qrcode') ||
+    u.includes('scan/login') ||
+    u.includes('customer/login')
+  );
+}
+
+function detectTapPhase(url, shopTitle = '') {
+  const u = String(url || '').toLowerCase();
+  if (isLoginOrAuthUrl(u) || u.includes('autologin')) return 'login';
+  if (u.includes('walle.xiaohongshu.com/cstools')) return 'shop';
+  if (/xiaohongshu|longlink|impaas|walle|edith/i.test(u)) return 'qianfan';
+  if (String(shopTitle || '').includes('登录')) return 'login';
+  return 'other';
+}
+
+function extractSetCookieHeaders(headers) {
+  const obj = headersToObject(headers);
+  const raw = obj['Set-Cookie'] || obj['set-cookie'] || '';
+  if (Array.isArray(raw)) return raw.join('; ');
+  return String(raw || '');
+}
+
+function detectLoginMilestone(url, method, headers, bodyText, responseBody) {
+  const u = String(url || '').toLowerCase();
+  const hints = [];
+  const setCookie = extractSetCookieHeaders(headers);
+  if (setCookie && /(?:^|;\s*)a1=/i.test(setCookie)) hints.push('set_cookie_a1');
+  if (setCookie && /access-token-walle/i.test(setCookie)) hints.push('set_cookie_walle_token');
+  if (setCookie && /web_session/i.test(setCookie)) hints.push('set_cookie_web_session');
+  if (/login|passport|sso|auth|qrcode|scan|customer\.xiaohongshu|\/cas\//i.test(u)) hints.push('login_api');
+  const merged = `${bodyText || ''}\n${responseBody || ''}`;
+  if (/access-token|customer\.eva\.AT-/i.test(merged)) hints.push('access_token_in_body');
+  if (/\"sid\"\s*:|authorization.*a1:/i.test(merged)) hints.push('sid_or_auth_in_body');
+  if (/channelId|ws\.auth|deviceId/i.test(merged)) hints.push('ws_auth_fields');
+  return [...new Set(hints)];
+}
+
 function isTapRelevantUrl(url) {
   const u = String(url || '');
   if (!u || STATIC_ASSET_RE.test(u)) return false;
@@ -73,7 +124,28 @@ function isTapRelevantUrl(url) {
 }
 
 function shopLabel(bridge) {
-  return String(bridge?.shopTitle || '店铺').trim();
+  return String(bridge?.shopTitle || bridge?.pageTitle || '店铺').trim();
+}
+
+function bridgePhase(bridge, url = '') {
+  return bridge?.phase || detectTapPhase(url || bridge?.pageUrl || '', shopLabel(bridge));
+}
+
+function createPseudoBridge(pageInfo = {}) {
+  const pageUrl = String(pageInfo.url || '');
+  const shopTitle =
+    String(pageInfo.shopTitle || pageInfo.title || '').trim() ||
+    (isLoginOrAuthUrl(pageUrl) ? '登录页' : '未命名页面');
+  return {
+    shopTitle,
+    pageTitle: String(pageInfo.title || pageInfo.pageTitle || '').trim(),
+    pageUrl,
+    phase: detectTapPhase(pageUrl, shopTitle),
+    wsUrls: new Map(),
+    wsHandshakeHeaders: new Map(),
+    client: null,
+    isGlobalTap: true,
+  };
 }
 
 function getShopTapState(bridge) {
@@ -93,12 +165,35 @@ function appendTap(entry) {
   }
 }
 
+function isLoginHighlightEntry(entry) {
+  if (entry.kind === 'session_milestone') return true;
+  if (entry.kind === 'cookie_snapshot') return true;
+  if ((entry.loginHints || []).length) return true;
+  const url = String(entry.url || '');
+  if (LOGIN_API_URL_RE.test(url)) return true;
+  if (entry.phase === 'login' && /\/api\//i.test(url) && !CONSOLE_NOISE_URL_RE.test(url)) return true;
+  return false;
+}
+
+function shouldPrintTapConsole(entry) {
+  const kind = entry.kind || 'event';
+  if (kind === 'session_milestone' || kind === 'cookie_snapshot') return true;
+  if (kind === 'ws_created' || kind === 'ws_handshake' || kind === 'ws_frame') return true;
+  const url = String(entry.url || '');
+  if (CONSOLE_NOISE_URL_RE.test(url)) return false;
+  if (kind === 'http_response_meta') return isLoginHighlightEntry(entry);
+  if (/\.js(\?|$)/i.test(url) && !isLoginHighlightEntry(entry)) return false;
+  return isLoginHighlightEntry(entry);
+}
+
 function printTapConsole(entry) {
+  if (!shouldPrintTapConsole(entry)) return;
   const shop = entry.shopTitle || '-';
   const kind = entry.kind || 'event';
+  const tag = isLoginHighlightEntry(entry) ? '登录★' : shop;
   if (kind === 'http_request') {
     println(
-      `[协议抓包][${shop}] HTTP ${entry.method} ${entry.url} cookieLen=${entry.cookieLength || 0} keys=${(entry.cookieKeysPreview || []).join(',')} bodyLen=${entry.bodyLength || 0}`
+      `[协议抓包][${tag}] HTTP ${entry.method} ${entry.url} cookieLen=${entry.cookieLength || 0} keys=${(entry.cookieKeysPreview || []).join(',')} bodyLen=${entry.bodyLength || 0}`
     );
     if (entry.bodyPreview) println(`  body: ${entry.bodyPreview}`);
     if (entry.cookie) println(`  Cookie: ${entry.cookie}`);
@@ -109,7 +204,7 @@ function printTapConsole(entry) {
   }
   if (kind === 'http_response') {
     println(
-      `[协议抓包][${shop}] HTTP ${entry.status} ${entry.url} respLen=${entry.responseBodyLength || 0}`
+      `[协议抓包][${tag}] HTTP ${entry.status} ${entry.url} respLen=${entry.responseBodyLength || 0}`
     );
     if (entry.responseBodyPreview) println(`  resp: ${entry.responseBodyPreview}`);
     return;
@@ -128,11 +223,18 @@ function printTapConsole(entry) {
     const action = entry.action || '';
     const buyer = entry.buyerMessageCount ? ` buyerMsgs=${entry.buyerMessageCount}` : '';
     println(
-      `[协议抓包][${shop}] WS ${entry.direction} action=${action} type=${entry.type}${buyer} preview=${entry.payloadPreview || ''}`
+      `[协议抓包][${shop}][${entry.phase || '-'}] WS ${entry.direction} action=${action} type=${entry.type}${buyer} preview=${entry.payloadPreview || ''}`
     );
     if (entry.cookie) println(`  Cookie(ws): ${entry.cookie}`);
     if (entry.payloadJson) println(`  payload: ${JSON.stringify(entry.payloadJson)}`);
     else if (entry.payloadRaw) println(`  raw: ${entry.payloadRaw}`);
+    return;
+  }
+  if (kind === 'cookie_snapshot') {
+    const cs = entry.cookieSummary || {};
+    println(
+      `[协议抓包][登录★][Cookie] ${shop} reason=${entry.reason || '-'} len=${entry.cookieLength || 0} a1=${cs.hasA1} walle=${cs.hasWalleToken} ark=${cs.hasArkToken} keys=${(entry.cookieKeysPreview || []).slice(0, 10).join(',')}`
+    );
     return;
   }
   println(`[协议抓包][${shop}] ${kind} ${JSON.stringify(entry).slice(0, 500)}`);
@@ -141,7 +243,13 @@ function printTapConsole(entry) {
 function recordTap(bridge, entry) {
   if (!isProtocolTapEnabled()) return;
   const shopTitle = shopLabel(bridge);
-  const row = { shopTitle, ...entry };
+  const phase = entry.phase || bridgePhase(bridge, entry.url || entry.pageUrl || bridge?.pageUrl);
+  const row = {
+    shopTitle,
+    phase,
+    pageUrl: entry.pageUrl || bridge?.pageUrl || '',
+    ...entry,
+  };
   appendTap(row);
   printTapConsole(row);
   const st = getShopTapState(bridge);
@@ -179,7 +287,8 @@ function maybeTapHttpRequest(bridge, params) {
     cookieKeysPreview: cookieKeyPreview(cookie),
     body: bodyText,
     bodyLength: bodyText.length,
-    bodyPreview: bodyText.slice(0, 800),
+    bodyPreview: bodyText.slice(0, 1200),
+    loginHints: detectLoginMilestone(url, request.method, headers, bodyText, ''),
   });
 }
 
@@ -225,8 +334,17 @@ async function maybeTapHttpLoadingFinished(bridge, params) {
       status: meta.status,
       responseBody: text,
       responseBodyLength: text.length,
-      responseBodyPreview: text.slice(0, 1200),
+      responseBodyPreview: text.slice(0, 2000),
+      loginHints: detectLoginMilestone(meta.url, meta.method, {}, '', text),
     });
+    try {
+      const { shouldTriggerCookieSnapshot, scheduleTapCookieSnapshot } = require('./qianfan-protocol-tap-cookie');
+      if (shouldTriggerCookieSnapshot(meta.url, text)) {
+        scheduleTapCookieSnapshot(bridge, 'login_http_response', { networkHeaderWaitMs: 1500 });
+      }
+    } catch {
+      // ignore cookie snapshot scheduling errors
+    }
   } catch {
     // body may be unavailable
   }
@@ -324,6 +442,22 @@ function maybeTapWsFrame(bridge, payload, direction, requestId) {
   });
 }
 
+function appendTapSessionMilestone(entry) {
+  recordTap(
+    { shopTitle: entry.shopTitle || 'SESSION', phase: entry.phase || 'login', pageUrl: entry.pageUrl || '' },
+    { kind: 'session_milestone', ...entry }
+  );
+}
+
+function writeTapSessionManifest(manifest) {
+  const outPath = path.join(
+    tapDebugDir(),
+    `qianfan-protocol-tap-session-${Date.now()}.json`
+  );
+  fs.writeFileSync(outPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return outPath;
+}
+
 function getProtocolTapStatus() {
   const shops = [...tapStateByShop.entries()].map(([shopTitle, st]) => ({
     shopTitle,
@@ -381,7 +515,11 @@ function logProtocolTapStartup() {
 
 module.exports = {
   isProtocolTapEnabled,
+  isLoginOrAuthUrl,
+  detectTapPhase,
+  createPseudoBridge,
   logProtocolTapStartup,
+  recordTap,
   maybeTapHttpRequest,
   maybeTapHttpResponse,
   maybeTapHttpLoadingFinished,
@@ -392,4 +530,6 @@ module.exports = {
   getProtocolTapStatus,
   bundleProtocolTap,
   tapLogPath,
+  appendTapSessionMilestone,
+  writeTapSessionManifest,
 };

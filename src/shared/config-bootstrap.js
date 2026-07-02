@@ -32,7 +32,7 @@ function buildDefaultConfig() {
       qianfanClientWorkingDir: 'E:\\千帆\\eva',
       qianfanClientProcessName: '千帆客服工作台.exe',
       autoLaunchQianfanClientWhenMissing: true,
-      autoCloseExistingQianfanClient: true,
+      autoCloseExistingQianfanClient: false,
       expectedShopCount: 4,
       waitTimeoutMs: 60000,
       checkIntervalMs: 2000,

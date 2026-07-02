@@ -31,7 +31,7 @@ function resolveDebugConfig(cfg = {}) {
     mode,
     autoLaunchBrowserWhenMissing: cfg.autoLaunchBrowserWhenMissing === true,
     autoLaunchQianfanClientWhenMissing: cfg.autoLaunchQianfanClientWhenMissing !== false,
-    autoCloseExistingQianfanClient: cfg.autoCloseExistingQianfanClient !== false,
+    autoCloseExistingQianfanClient: cfg.autoCloseExistingQianfanClient === true,
     expectedShopCount: Number(cfg.expectedShopCount || 4),
     devtoolsPort: Number(cfg.devtoolsPort || 9223),
     devtoolsHost: cfg.devtoolsHost || '127.0.0.1',

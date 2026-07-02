@@ -116,6 +116,11 @@ function getShopCookieUploadConfig() {
     statusPath: statusPath.startsWith('/') ? statusPath : `/${statusPath}`,
     uploadToken,
     timeoutMs: Number(process.env.SHOP_COOKIE_UPLOAD_TIMEOUT_MS || sc.timeoutMs || UPLOAD_TIMEOUT_MS),
+    autoUploadIntervalHours: Number(
+      process.env.SHOP_COOKIE_AUTO_UPLOAD_HOURS ?? sc.autoUploadIntervalHours ?? 0
+    ),
+    autoUploadEnabled: sc.autoUploadEnabled === true,
+    useTicketHarvest: sc.useTicketHarvest !== false,
   };
 }
 
@@ -171,6 +176,10 @@ function buildShopResult(shopKey, partial = {}) {
     serverStatus: partial.serverStatus || '',
     lastUploadAt: partial.lastUploadAt || '',
     message: partial.message || '',
+    harvestOk: partial.harvestOk,
+    probeQualityOk: partial.probeQualityOk,
+    probeSignOk: partial.probeSignOk,
+    phase: partial.phase || '',
   };
 }
 
@@ -894,9 +903,39 @@ function buildMissingShopResults(missingShopNames) {
     buildShopResult(SHOP_KEY_BY_NAME[shopName] || shopName, {
       shopName,
       ok: false,
+      phase: 'harvest',
+      harvestOk: false,
       message: '未能从千帆读取 Cookie，请确认该店客服台已打开',
     })
   );
+}
+
+function buildSkippedShopResults(collectedByKey) {
+  const rows = [];
+  for (const [shopKey, collected] of Object.entries(collectedByKey || {})) {
+    if (!collected?.skipped) continue;
+    rows.push(
+      buildShopResult(shopKey, {
+        shopName: collected.shopName || shopDisplayName(shopKey),
+        ok: false,
+        length: collected.cookie?.length || 0,
+        harvestOk: collected.harvestOk,
+        probeQualityOk: collected.probeQualityOk,
+        probeSignOk: collected.probeSignOk,
+        phase: collected.reason === 'probe_failed' ? 'probe' : 'harvest',
+        message: collected.message || collected.reason || '采集或探针未通过，未上传',
+      })
+    );
+  }
+  return rows;
+}
+
+function shouldUseTicketHarvest(reason, options = {}) {
+  if (options.useTicketHarvest === false) return false;
+  if (options.useTicketHarvest === true) return true;
+  const uploadCfg = getShopCookieUploadConfig();
+  if (!uploadCfg.useTicketHarvest) return false;
+  return ['ui_manual', 'local_api', 'scheduled_auto', 'manual'].includes(String(reason || ''));
 }
 
 function summarizeUploadMessage(result) {
@@ -1008,26 +1047,41 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
 
   logUploadConfig(uploadCfg);
 
-  const { collectedByKey, missing, incomplete, count } = await collectAllShopCookies({
-    useDevToolsFallback: options.useDevToolsFallback !== false,
-  });
+  let collectResult;
+  if (shouldUseTicketHarvest(reason, options)) {
+    println('[Cookie上传] 使用换票统一采集（walle→ST票→ark SSO→品退探针）');
+    const { collectAllShopCookiesViaTicket } = require('./shop-cookie-ticket-harvest');
+    collectResult = await collectAllShopCookiesViaTicket(options);
+  } else {
+    collectResult = await collectAllShopCookies({
+      useDevToolsFallback: options.useDevToolsFallback !== false,
+    });
+  }
+
+  const { collectedByKey, missing, incomplete, count } = collectResult;
+  const operationLogs = collectResult.logs || [];
   const missingResults = buildMissingShopResults(missing);
+  const skippedResults = buildSkippedShopResults(collectedByKey);
   const incompleteResults = buildIncompleteShopResults(incomplete || [], collectedByKey);
   const { uploadable, skippedNoA1, skippedMissingArk, skippedInvalid } = filterUploadableCookies(collectedByKey);
   const missingArkResults = buildMissingArkShopResults(skippedMissingArk, collectedByKey);
   const passiveSkippedCount = Object.values(collectedByKey).filter((c) => c?.skipped).length;
 
   if (!Object.keys(uploadable).length) {
-    const allFailed = [...missingResults, ...incompleteResults, ...missingArkResults];
-    let message = '暂未监听到新的千帆请求 Cookie，本次不上传';
-    if (count > 0 && skippedMissingArk.length && !incomplete.length && !missing.length) {
+    const allFailed = [...missingResults, ...skippedResults, ...incompleteResults, ...missingArkResults];
+    let message = '没有通过本地品退探针的有效 Cookie，本次不上传';
+    if (count > 0 && skippedResults.length && !incomplete.length && !missing.length) {
+      message = '已采集 Cookie，但品退探针未通过或 Cookie 不完整，本次不上传';
+    } else if (!shouldUseTicketHarvest(reason, options) && count > 0 && skippedMissingArk.length) {
       message = '已捕获请求 Cookie，但缺少订单同步 token，本次不上传';
     } else if (incomplete.length) {
       message = `采集到 ${count} 店 Cookie，但均缺少 a1，未上传`;
+    } else if (missing.length) {
+      message = '部分店铺工作台未打开，未能采集 Cookie';
     }
     return {
       ok: false,
-      reason: 'no_recent_network_cookie',
+      reason: skippedResults.length ? 'probe_or_harvest_failed' : 'no_recent_network_cookie',
       message,
       shops: allFailed,
       success: 0,
@@ -1039,6 +1093,7 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
       skippedMissingArk,
       skippedInvalid,
       passiveSkippedCount,
+      logs: operationLogs,
     };
   }
 
@@ -1059,7 +1114,22 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
     };
   }
 
-  const merged = [...(uploadResult.shops || []), ...incompleteResults, ...missingArkResults, ...missingResults];
+  const merged = [
+    ...(uploadResult.shops || []),
+    ...incompleteResults,
+    ...missingArkResults,
+    ...skippedResults,
+    ...missingResults,
+  ];
+  for (const shop of merged) {
+    const collected = collectedByKey[shop.shopKey];
+    if (!collected) continue;
+    if (collected.harvestOk != null) shop.harvestOk = collected.harvestOk;
+    if (collected.probeQualityOk != null) shop.probeQualityOk = collected.probeQualityOk;
+    if (collected.probeSignOk != null) shop.probeSignOk = collected.probeSignOk;
+    if (!shop.length && collected.cookie) shop.length = collected.cookie.length;
+    if (!shop.hash8 && collected.cookieHash) shop.hash8 = collected.cookieHash.slice(0, 8);
+  }
   const success = merged.filter((s) => s.ok).length;
   const failed = merged.length - success;
   const uploadedCount = Object.keys(uploadable).length;
@@ -1082,13 +1152,51 @@ async function runShopCookieUploadAll(reason = 'manual', options = {}) {
     skippedMissingArk,
     skippedInvalid,
     reason,
+    logs: operationLogs,
     message: summarizeUploadMessage({ ok: submittedOk, shops: merged, message: uploadResult.message }),
   };
 }
 
-function triggerShopCookieUploadOnBuyerMessage(messageOrTitle) {
+let shopCookieAutoUploadTimer = null;
+
+function scheduleShopCookieAutoUpload() {
   const uploadCfg = getShopCookieUploadConfig();
   if (!uploadCfg.enabled) {
+    println('[Cookie上传] 四店自动上传未启用');
+    return;
+  }
+  if (!uploadCfg.autoUploadEnabled) {
+    println('[Cookie上传] 定时自动上传已关闭，请使用界面按钮手动提交');
+    return;
+  }
+  const hours = Number(uploadCfg.autoUploadIntervalHours || 0);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    println('[Cookie上传] 自动上传间隔已关闭（autoUploadIntervalHours<=0）');
+    return;
+  }
+  const intervalMs = Math.max(60 * 60 * 1000, hours * 60 * 60 * 1000);
+  if (shopCookieAutoUploadTimer) clearInterval(shopCookieAutoUploadTimer);
+  shopCookieAutoUploadTimer = setInterval(() => {
+    println(`[Cookie上传] 定时任务触发（每 ${hours} 小时）`);
+    void runShopCookieUploadAll('scheduled_auto', {
+      force: true,
+      useTicketHarvest: true,
+      verifyStatus: true,
+    })
+      .then((result) => {
+        println(`[Cookie上传] 定时上传结果：${result.message || (result.ok ? '成功' : '失败')}`);
+      })
+      .catch((err) => {
+        println(`[Cookie上传] 定时上传异常：${err.message || err}`);
+      });
+  }, intervalMs);
+  if (typeof shopCookieAutoUploadTimer.unref === 'function') shopCookieAutoUploadTimer.unref();
+  println(`[Cookie上传] 已启动每 ${hours} 小时自动换票采集、探针校验并上传`);
+}
+
+function triggerShopCookieUploadOnBuyerMessage(messageOrTitle) {
+  const uploadCfg = getShopCookieUploadConfig();
+  if (!uploadCfg.enabled || !uploadCfg.autoUploadEnabled) {
     return Promise.resolve({ ok: false, skipped: true, message: 'skipped' });
   }
   const shopTitle =
@@ -1132,6 +1240,7 @@ module.exports = {
   runShopCookieUploadAll,
   runShopCookieUploadForShop,
   triggerShopCookieUploadOnBuyerMessage,
+  scheduleShopCookieAutoUpload,
   summarizeUploadMessage,
   fetchShopCookieStatus,
   maskCookiePreview,
