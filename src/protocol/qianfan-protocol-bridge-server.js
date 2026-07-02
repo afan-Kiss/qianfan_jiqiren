@@ -8,6 +8,11 @@ const {
   handleBridgeOpenSession,
   handleBridgeSend,
 } = require('./qianfan-protocol-bridge-handlers');
+const {
+  handleBridgeOrderShops,
+  handleBridgeOrdersQuery,
+  handleBridgeExportColumns,
+} = require('./qianfan-protocol-bridge-order-handlers');
 
 function readBody(req, maxBytes = 32 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -71,6 +76,28 @@ function createProtocolBridgeServer(options = {}) {
           const body = await readBody(req);
           const result = await handleBridgeSend(body);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/shops') {
+          const result = await handleBridgeOrderShops();
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/api/export-columns') {
+          const result = handleBridgeExportColumns();
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(result));
+          return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/orders/query') {
+          const body = await readBody(req);
+          const result = await handleBridgeOrdersQuery(body);
+          res.writeHead(result.ok ? 200 : 500, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify(result));
           return;
         }

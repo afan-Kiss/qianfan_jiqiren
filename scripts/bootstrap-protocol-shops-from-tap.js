@@ -10,7 +10,7 @@ const { pickLatestWsAuthSample, pickLatestWsHandshake, cleanWsHandshakeHeaders }
 const { pickMaxWsSeqFromTap } = require('../src/protocol/qianfan-protocol-ws-routing');
 const { normalizeImpaasHttpHeaders } = require('../src/protocol/qianfan-protocol-auth');
 
-const SHOPS = ['祥钰珠宝', '和田雅玉', 'XY祥钰珠宝'];
+const SHOPS = ['祥钰珠宝', '拾玉居和田玉', '和田雅玉', 'XY祥钰珠宝'];
 const FANFAN_UID = '60213afd00000000010055fd';
 const FANFAN_RECEIVER = `1#2#2#${FANFAN_UID}`;
 const DEFAULT_UA =
@@ -66,15 +66,16 @@ function extractTextSendToFanfan(rows, shopTitle) {
   return last;
 }
 
-function sharedCookie() {
+function cookieForShop(shopTitle) {
   try {
-    return String(findProtocolShopConfig('祥钰珠宝', { allowIncomplete: true }).cookie || '').trim();
+    return String(findProtocolShopConfig(shopTitle, { allowIncomplete: true }).cookie || '').trim();
   } catch {
     return '';
   }
 }
 
-function buildShop(shopTitle, rows, cookie) {
+function buildShop(shopTitle, rows, cookieFromCaller) {
+  const cookie = String(cookieFromCaller || cookieForShop(shopTitle) || '').trim();
   const shopRows = rows.filter((r) => r.shopTitle === shopTitle);
   const base = {
     shopTitle,
@@ -160,13 +161,13 @@ function buildShop(shopTitle, rows, cookie) {
 
 function main() {
   const rows = readAllTapRows();
-  const cookie = sharedCookie();
-  if (!cookie) {
-    console.error('[bootstrap-tap] 缺少共享 cookie，请先导出祥钰珠宝配置');
-    process.exit(1);
-  }
-
-  const shops = SHOPS.map((shopTitle) => buildShop(shopTitle, rows, cookie));
+  const shops = SHOPS.map((shopTitle) => {
+    const cookie = cookieForShop(shopTitle);
+    if (!cookie) {
+      console.warn(`[bootstrap-tap] ${shopTitle} 缺少独立 cookie，请先 refresh-protocol-cookies-from-cdp`);
+    }
+    return buildShop(shopTitle, rows, cookie);
+  });
   saveLocalProtocolConfig(shops);
 
   for (const config of shops) {
@@ -174,7 +175,7 @@ function main() {
       `[bootstrap-tap] ${config.shopTitle} uid=${config.ws?.authTemplate?.body?.uid || '-'} lastSeq=${config.lastSeq || 0} appCid=${String(config.testTarget?.appCid || '').slice(0, 52) || '(无)'} list=${Boolean(config.httpTemplates?.messageList?.url)}`
     );
   }
-  console.log('[bootstrap-tap] 已全量写入 config/qianfan-protocol-shops.local.json（3 店）');
+  console.log('[bootstrap-tap] 已全量写入 config/qianfan-protocol-shops.local.json（4 店，每店独立 cookie）');
 }
 
 main();

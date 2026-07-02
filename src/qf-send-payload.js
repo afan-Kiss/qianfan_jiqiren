@@ -64,6 +64,19 @@ function buildSendHeader({ traceId, sMid, seq, manualHeader }) {
   };
 }
 
+function refreshAdditionInfoUuid(extension) {
+  if (!extension?.additionInfo) return buildSafeExtension();
+  try {
+    const ext = { ...extension };
+    const info = JSON.parse(ext.additionInfo);
+    info.uuid = crypto.randomUUID();
+    ext.additionInfo = JSON.stringify(info);
+    return ext;
+  } catch {
+    return buildSafeExtension();
+  }
+}
+
 function buildTextSendPayloadFromContext({ shopTitle, appCid, receiverAppUids, text, seq, sessionContext, manualTemplate }) {
   const traceId = makeTraceId();
   const sMid = makeSMid();
@@ -71,29 +84,51 @@ function buildTextSendPayloadFromContext({ shopTitle, appCid, receiverAppUids, t
   const safeSeq = Number(seq) > 0 ? Number(seq) : 1;
   const uids = Array.isArray(receiverAppUids) ? receiverAppUids.filter(Boolean) : [];
   const useManual = isUsableTextManualTemplate(manualTemplate, appCid);
-  const manualBody = useManual ? manualTemplate.payload.body : null;
 
-  const body = {
-    appCid,
-    convType: Number(manualBody?.convType) > 0 ? Number(manualBody.convType) : 1,
-    uuid,
-    receiverAppUids: uids,
-    contentInfo: buildPlainTextContentInfo(text),
-    convCreateIsSelfVisible: manualBody?.convCreateIsSelfVisible !== false,
-    convRedPointIsNotSelfClear: manualBody?.convRedPointIsNotSelfClear !== false,
-    extension: buildSafeExtension(),
-    callbackCtx: {},
-  };
+  let payload;
 
-  const payload = {
-    header: buildSendHeader({
-      traceId,
-      sMid,
-      seq: safeSeq,
-      manualHeader: useManual ? manualTemplate.payload.header : null,
-    }),
-    body,
-  };
+  if (useManual && manualTemplate?.payload) {
+    payload = JSON.parse(JSON.stringify(manualTemplate.payload));
+    payload.header = payload.header || {};
+    payload.body = payload.body || {};
+    payload.header.sTime = Date.now();
+    payload.header.seq = safeSeq;
+    payload.header.type = 3;
+    payload.header.bizId = payload.header.bizId || 10;
+    payload.header.contentType = 'json';
+    payload.header.traceId = traceId;
+    payload.header.action = '/message/send';
+    payload.header.serviceId = 'impaas.oi';
+    payload.header.oneWay = false;
+    payload.header.sMid = sMid;
+    payload.body.appCid = appCid;
+    payload.body.convType = payload.body.convType || 1;
+    payload.body.uuid = uuid;
+    payload.body.receiverAppUids = uids;
+    const ci = manualTemplate.payload?.body?.contentInfo || { contentType: 1 };
+    payload.body.contentInfo = {
+      ...ci,
+      contentType: ci.contentType || 1,
+      content: String(text || ''),
+    };
+    payload.body.extension = refreshAdditionInfoUuid(payload.body.extension);
+    if (!payload.body.callbackCtx) payload.body.callbackCtx = {};
+  } else {
+    payload = {
+      header: buildSendHeader({ traceId, sMid, seq: safeSeq, manualHeader: null }),
+      body: {
+        appCid,
+        convType: 1,
+        uuid,
+        receiverAppUids: uids,
+        contentInfo: buildPlainTextContentInfo(text),
+        convCreateIsSelfVisible: true,
+        convRedPointIsNotSelfClear: true,
+        extension: buildSafeExtension(),
+        callbackCtx: {},
+      },
+    };
+  }
 
   return {
     payload,

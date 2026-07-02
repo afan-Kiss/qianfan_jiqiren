@@ -89,6 +89,8 @@
     "qf:protocol:triple-reply": "node scripts/bootstrap-protocol-shops-from-tap.js && node scripts/run-qianfan-protocol-triple-auto-reply.js",
     "qf:protocol:config-agent": "node scripts/qianfan-protocol-config-agent.js",
     "qf:protocol:bridge": "node scripts/qianfan-protocol-bridge-server.js",
+    "qf:protocol:orders": "node scripts/run-qianfan-order-collector.js",
+    "qf:protocol:orders:save-tap": "node scripts/save-order-api-captured-from-tap.js",
     "qf:protocol:import-captured": "node scripts/import-xiangyu-captured-to-protocol.js",
     "qf:protocol:xiangyu-qr": "node scripts/generate-xiangyu-server-qr.js",
     "check:qianfan-protocol-daemon": "node scripts/check-qianfan-protocol-daemon.js"

@@ -117,8 +117,18 @@ function loadProtocolShopConfigs(options = {}) {
   return { shops, warnings, localPath };
 }
 
+function normalizeProtocolShopTitle(title) {
+  const t = String(title || '').trim();
+  if (!t) return t;
+  if (t === '拾玉居' || (t.includes('拾玉居') && !t.includes('XY'))) return '拾玉居和田玉';
+  if (t === '祥钰' || t === '祥钰珠宝') return '祥钰珠宝';
+  if (t === 'XY祥钰' || t === 'XY祥钰珠宝') return 'XY祥钰珠宝';
+  if (t.includes('和田雅玉') || t.includes('禾田雅玉')) return '和田雅玉';
+  return t;
+}
+
 function findProtocolShopConfig(shopTitle, options = {}) {
-  const title = String(shopTitle || '').trim();
+  const title = normalizeProtocolShopTitle(String(shopTitle || '').trim());
   if (options.allowIncomplete) {
     const localPath = localConfigPath();
     if (fs.existsSync(localPath)) {

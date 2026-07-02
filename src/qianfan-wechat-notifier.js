@@ -21,7 +21,7 @@ const {
   findOpenPendingForBuyer,
 } = require('./qianfan-data-store');
 const { sendWxText, sendWxBuyerImages } = require('./wechat-send-api');
-const { collectMessageImageUrls, pickOrderInfoFromMessages, formatOrderInfoForNotice } = require('./chat-parse');
+const { collectMessageImageUrls } = require('./chat-parse');
 
 const MERGE_MS = process.env.QIANFAN_SIM_MERGE_MS != null
   ? Number(process.env.QIANFAN_SIM_MERGE_MS)
@@ -96,12 +96,6 @@ function formatWechatNotice(replyId, merged) {
     `买家：${merged.buyerNick || '买家'}`,
     `时间：${formatTime(merged.createAt)}`,
   ];
-
-  const orderInfo = merged.orderInfo || pickOrderInfoFromMessages(merged.messages);
-  const orderLines = formatOrderInfoForNotice(orderInfo);
-  if (orderLines.length) {
-    body.push(...orderLines);
-  }
 
   if (uniqueTexts.length === 1) {
     body.push(`消息：${uniqueTexts[0]}`);
@@ -277,14 +271,7 @@ async function flushMergeBucket(bucketKey) {
     replyId = nextReplyId();
   }
   const targets = getNotifyTargets();
-  const content = formatWechatNotice(replyId, {
-    shopTitle: bucket.shopTitle,
-    buyerNick: bucket.buyerNick,
-    createAt: bucket.createAt,
-    texts: bucket.texts,
-    messages: bucket.messages,
-    orderInfo: pickOrderInfoFromMessages(bucket.messages),
-  });
+  const content = formatWechatNotice(replyId, bucket);
   const alreadySentWxids = new Set(
     Array.isArray(resumePending?.wechatTargets)
       ? resumePending.wechatTargets.map((x) => String(x || '').trim()).filter(Boolean)

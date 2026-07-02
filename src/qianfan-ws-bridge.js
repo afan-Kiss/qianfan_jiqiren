@@ -1855,7 +1855,11 @@ async function sendQianfanTextReply({ shopTitle, appCid, receiverAppUids, text, 
   }
 
   const manualForCid = strictTarget ? null : bridge.lastManualSendByAppCid.get(appCid) || null;
-  const manualTemplate = isUsableTextManualTemplate(manualForCid, appCid) ? manualForCid : null;
+  const manualAny =
+    !strictTarget && isUsableTextManualTemplate(bridge.lastManualSendAny, appCid)
+      ? bridge.lastManualSendAny
+      : null;
+  const manualTemplate = isUsableTextManualTemplate(manualForCid, appCid) ? manualForCid : manualAny;
   if (!strictTarget && !finalReceiverAppUids.length && manualForCid?.receiverAppUids?.length) {
     finalReceiverAppUids = manualForCid.receiverAppUids;
   }
