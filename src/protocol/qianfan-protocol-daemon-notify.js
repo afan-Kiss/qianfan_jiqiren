@@ -3,6 +3,7 @@
  */
 const { getLiveNotifyTargets } = require('../wechat/wxbot-new-config');
 const { sendWxText } = require('../wechat-send-api');
+const { formatOrderInfoForNotice, pickOrderInfoFromMessages } = require('../chat-parse');
 const { println } = require('../utils');
 
 function formatTime(ts) {
@@ -12,15 +13,21 @@ function formatTime(ts) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function formatBuyerNotice({ shopTitle, buyerNick, text, source, createAt }) {
-  return [
+function formatBuyerNotice({ shopTitle, buyerNick, text, source, createAt, orderInfo, messages }) {
+  const lines = [
     '【千帆新消息】',
     `店铺：${shopTitle || '未知店铺'}`,
     `买家：${buyerNick || '买家'}`,
+  ];
+  const resolvedOrder = orderInfo || pickOrderInfoFromMessages(messages);
+  const orderLines = formatOrderInfoForNotice(resolvedOrder);
+  if (orderLines.length) lines.push(...orderLines);
+  lines.push(
     `内容：${String(text || '').slice(0, 500)}`,
     `来源：${source || 'WS实时'}`,
     `时间：${formatTime(createAt)}`,
-  ].join('\n');
+  );
+  return lines.join('\n');
 }
 
 function formatCredentialExpiredNotice({ shopTitle, reason, channel }) {

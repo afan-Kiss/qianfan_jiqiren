@@ -31,10 +31,29 @@ async function main() {
     buyerNick: '测试买家',
     createAt: Date.now(),
     texts: ['测试消息内容'],
+    messages: [
+      {
+        contentType: 'text',
+        text: '测试消息内容',
+        orderInfo: {
+          orderId: 'P999',
+          amount: '¥99',
+          orderDate: '2026-07-02 10:00',
+          afterSaleLabel: '无售后',
+        },
+      },
+    ],
+    orderInfo: {
+      orderId: 'P999',
+      amount: '¥99',
+      orderDate: '2026-07-02 10:00',
+      afterSaleLabel: '无售后',
+    },
   });
   assert.ok(sampleNotice.includes('【千帆待回复 #92001】'), '通知格式必须包含编号标题');
   assert.ok(sampleNotice.includes('测试店铺'), '通知格式必须包含店铺');
   assert.ok(sampleNotice.includes('测试买家'), '通知格式必须包含买家');
+  assert.ok(sampleNotice.includes('订单号：P999'), '通知格式必须包含订单号');
 
   const failingHooks = createQianfanWechatNotifier({
     enabled: true,

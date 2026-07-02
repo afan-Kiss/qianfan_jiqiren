@@ -98,6 +98,21 @@ const IMAGE_URL_FIELDS = [
   'image',
 ];
 
+const AVATAR_FIELD_RE = /avatar|headimg|head_img|headurl|head_url|portrait|profilepic|profile_pic|userhead|user_head|nickavatar|snsavatar/i;
+
+function isLikelyAvatarOrProfileUrl(url) {
+  const u = String(url || '').trim().toLowerCase();
+  if (!isHttpUrl(u)) return true;
+  if (AVATAR_FIELD_RE.test(u)) return true;
+  if (/\/avatar[\/.-]|\/avatars[\/.-]/.test(u)) return true;
+  if (/sns-avatar|user-avatar|headpic|head_pic|default_avatar/.test(u)) return true;
+  return false;
+}
+
+function filterForwardableImageUrls(urls) {
+  return [...new Set((urls || []).filter(isHttpUrl).filter((u) => !isLikelyAvatarOrProfileUrl(u)))];
+}
+
 function collectImageUrlsFromValue(value, out, depth = 0) {
   if (depth > 8 || out.length >= 20) return;
   if (value == null) return;
@@ -106,7 +121,7 @@ function collectImageUrlsFromValue(value, out, depth = 0) {
     const s = value.trim();
     if (!s) return;
     if (isHttpUrl(s)) {
-      out.push(s);
+      if (!isLikelyAvatarOrProfileUrl(s)) out.push(s);
       return;
     }
     if (s.startsWith('{') || s.startsWith('[')) {
@@ -122,18 +137,22 @@ function collectImageUrlsFromValue(value, out, depth = 0) {
   }
 
   if (typeof value === 'object') {
-    for (const key of IMAGE_URL_FIELDS) {
-      const v = value[key];
-      if (isHttpUrl(v)) out.push(String(v).trim());
+    for (const [key, v] of Object.entries(value)) {
+      if (AVATAR_FIELD_RE.test(key)) continue;
+      if (IMAGE_URL_FIELDS.includes(key) && isHttpUrl(v)) {
+        const url = String(v).trim();
+        if (!isLikelyAvatarOrProfileUrl(url)) out.push(url);
+        continue;
+      }
+      collectImageUrlsFromValue(v, out, depth + 1);
     }
-    for (const v of Object.values(value)) collectImageUrlsFromValue(v, out, depth + 1);
   }
 }
 
 function extractImageUrlsFromObjects(objects) {
   const found = [];
   for (const obj of objects) collectImageUrlsFromValue(safeJsonParseDeep(obj), found);
-  const uniq = [...new Set(found.filter(isHttpUrl))];
+  const uniq = filterForwardableImageUrls(found);
   const thumb =
     uniq.find((u) => /thumb|thumbnail|small|preview|cover/i.test(u)) || uniq[uniq.length - 1] || '';
   const origin =
@@ -326,6 +345,84 @@ function formatProductText(productInfo) {
   return lines.join('\n');
 }
 
+function collectNestedObjects(value, out, depth = 0, seen = null) {
+  if (depth > 7 || out.length >= 120) return;
+  if (value == null) return;
+  const visited = seen || new WeakSet();
+  if (typeof value === 'object') {
+    if (visited.has(value)) return;
+    visited.add(value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      const parsed = parseMaybeJson(trimmed);
+      if (parsed != null && parsed !== value) collectNestedObjects(parsed, out, depth + 1, visited);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectNestedObjects(item, out, depth + 1, visited);
+    return;
+  }
+  if (typeof value === 'object') {
+    out.push(value);
+    for (const v of Object.values(value)) collectNestedObjects(v, out, depth + 1, visited);
+  }
+}
+
+function formatOrderDate(value) {
+  const ms = normalizeCreateAtMs(value);
+  if (ms) {
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  const s = toReadableScalar(value);
+  if (s && /\d{4}[-/年]/.test(s)) return s;
+  return '';
+}
+
+function pickBooleanFromObjects(objects, fields) {
+  for (const obj of objects) {
+    if (!obj || typeof obj !== 'object') continue;
+    for (const key of fields) {
+      if (!(key in obj)) continue;
+      const v = obj[key];
+      if (typeof v === 'boolean') return v;
+      if (v === 1 || v === '1' || v === 'true' || v === 'yes') return true;
+      if (v === 0 || v === '0' || v === 'false' || v === 'no') return false;
+    }
+  }
+  return null;
+}
+
+function mergeOrderInfo(primary, secondary) {
+  const a = primary && typeof primary === 'object' ? primary : {};
+  const b = secondary && typeof secondary === 'object' ? secondary : {};
+  const merged = { ...a };
+  for (const [key, value] of Object.entries(b)) {
+    if (value == null || value === '') continue;
+    if (merged[key] == null || merged[key] === '') merged[key] = value;
+  }
+  return merged;
+}
+
+function resolveAfterSaleLabel(orderInfo) {
+  if (!orderInfo || typeof orderInfo !== 'object') return '';
+  if (orderInfo.afterSaleLabel) return String(orderInfo.afterSaleLabel).trim();
+  const status = String(orderInfo.afterSaleStatus || orderInfo.refundStatus || '').trim();
+  if (status) {
+    if (/无|none|no|未|关闭/.test(status) && !/有|进行|处理|退款|退货/.test(status)) return '无售后';
+    return status;
+  }
+  if (orderInfo.hasAfterSale === true) return '有售后';
+  if (orderInfo.hasAfterSale === false) return '无售后';
+  const statusText = String(orderInfo.status || '').trim();
+  if (/售后|退款|退货|换货/.test(statusText)) return statusText;
+  return '';
+}
+
 function extractOrderInfo(objects) {
   const orderId = pickFieldFromObjects(objects, [
     'orderId',
@@ -334,23 +431,145 @@ function extractOrderInfo(objects) {
     'packageId',
     'order_id',
     'order_sn',
+    'bizOrderId',
+    'displayOrderNo',
   ]);
-  const status = pickFieldFromObjects(objects, ['status', 'orderStatus', 'order_status', 'state', 'statusDesc']);
+  const status = pickFieldFromObjects(objects, [
+    'status',
+    'orderStatus',
+    'order_status',
+    'state',
+    'statusDesc',
+    'orderStateDesc',
+    'packageStatusDesc',
+  ]);
   const amount = formatPrice(
-    pickFieldFromObjects(objects, ['amount', 'payAmount', 'totalAmount', 'orderAmount', 'price'])
+    pickFieldFromObjects(objects, [
+      'amount',
+      'payAmount',
+      'totalAmount',
+      'orderAmount',
+      'price',
+      'paidAmount',
+      'actualPaid',
+      'payPrice',
+      'goodsPrice',
+    ])
   );
-  const productTitle = pickFieldFromObjects(objects, ['productTitle', 'goodsTitle', 'title', 'itemTitle']);
-  return { orderId, status, amount, productTitle };
+  const productTitle = pickFieldFromObjects(objects, [
+    'productTitle',
+    'goodsTitle',
+    'title',
+    'itemTitle',
+    'skuName',
+    'itemName',
+    'goodsName',
+  ]);
+  const orderDate = formatOrderDate(
+    pickFieldFromObjects(objects, [
+      'orderTime',
+      'orderDate',
+      'createTime',
+      'createdAt',
+      'payTime',
+      'paidTime',
+      'placeOrderTime',
+      'packageCreateTime',
+      'orderCreateTime',
+      'pay_at',
+      'create_at',
+    ])
+  );
+  const hasAfterSale = pickBooleanFromObjects(objects, [
+    'hasAfterSale',
+    'has_after_sale',
+    'inAfterSale',
+    'existAfterSale',
+    'afterSaleExist',
+    'hasRefund',
+    'hasReturn',
+  ]);
+  const afterSaleStatus = pickFieldFromObjects(objects, [
+    'afterSaleStatus',
+    'after_sales_status',
+    'afterSaleState',
+    'refundStatus',
+    'returnStatus',
+    'refund_state',
+    'afterSaleStatusDesc',
+  ]);
+  const info = {
+    orderId,
+    status,
+    amount,
+    productTitle,
+    orderDate,
+    hasAfterSale,
+    afterSaleStatus,
+  };
+  info.afterSaleLabel = resolveAfterSaleLabel(info);
+  return info;
+}
+
+function formatOrderInfoLines(orderInfo) {
+  if (!orderInfo || typeof orderInfo !== 'object') return [];
+  const lines = [];
+  if (orderInfo.orderId) lines.push(`订单号：${orderInfo.orderId}`);
+  if (orderInfo.productTitle) lines.push(`商品：${orderInfo.productTitle}`);
+  if (orderInfo.amount) lines.push(`价格：${orderInfo.amount}`);
+  if (orderInfo.orderDate) lines.push(`下单：${orderInfo.orderDate}`);
+  if (orderInfo.status) lines.push(`状态：${orderInfo.status}`);
+  const afterSale = resolveAfterSaleLabel(orderInfo);
+  if (afterSale) lines.push(`售后：${afterSale}`);
+  return lines;
 }
 
 function formatOrderText(orderInfo) {
-  const lines = ['【订单消息】'];
-  if (orderInfo?.orderId) lines.push(`订单号：${orderInfo.orderId}`);
-  if (orderInfo?.status) lines.push(`状态：${orderInfo.status}`);
-  if (orderInfo?.amount) lines.push(`金额：${orderInfo.amount}`);
-  if (orderInfo?.productTitle && lines.length < 4) lines.push(`商品：${orderInfo.productTitle}`);
+  const lines = ['【订单消息】', ...formatOrderInfoLines(orderInfo)];
   if (lines.length === 1) return '【订单消息】';
   return lines.join('\n');
+}
+
+function scoreOrderInfo(orderInfo, contentType = '') {
+  if (!orderInfo || typeof orderInfo !== 'object') return 0;
+  let score = 0;
+  if (orderInfo.orderId) score += 5;
+  if (orderInfo.amount) score += 3;
+  if (orderInfo.orderDate) score += 2;
+  if (orderInfo.productTitle) score += 2;
+  if (orderInfo.status) score += 1;
+  if (resolveAfterSaleLabel(orderInfo)) score += 1;
+  if (contentType === 'order') score += 4;
+  return score;
+}
+
+function pickOrderInfoFromMessages(messages) {
+  let best = null;
+  let bestScore = 0;
+  for (const msg of messages || []) {
+    const direct = msg?.orderInfo;
+    if (direct) {
+      const score = scoreOrderInfo(direct, msg?.contentType);
+      if (score > bestScore) {
+        best = direct;
+        bestScore = score;
+      }
+    }
+    const objects = [];
+    collectNestedObjects(msg?.raw, objects);
+    collectNestedObjects(msg, objects);
+    const extracted = extractOrderInfo(objects);
+    const score = scoreOrderInfo(extracted, msg?.contentType);
+    if (score > bestScore) {
+      best = extracted;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+function formatOrderInfoForNotice(orderInfo) {
+  return formatOrderInfoLines(orderInfo);
 }
 
 function extractVideoInfo(objects) {
@@ -451,17 +670,9 @@ function normalizeQianfanMessage(rawMessage) {
   const inner = extractInnerPayload(item);
   const { hints, innerType } = readTypeHints(item, inner);
 
-  const objects = [
-    item,
-    inner.contentInfo,
-    inner.root,
-    inner.data,
-    inner.data?.content,
-    item.body,
-    item.body?.data,
-    item.data,
-    envelope,
-  ].filter((o) => o && typeof o === 'object');
+  const objects = [];
+  collectNestedObjects(item, objects);
+  collectNestedObjects(envelope, objects);
 
   let contentType = 'unknown';
   let text = '【未知消息】';
@@ -474,8 +685,12 @@ function normalizeQianfanMessage(rawMessage) {
   let fileInfo = null;
 
   const tryText = inner.innerText || summary;
+  const plainOrderNo = looksLikePlainOrderNumber(tryText);
 
-  if (isImageType(hints, innerType)) {
+  if (plainOrderNo) {
+    contentType = 'text';
+    text = plainOrderNo;
+  } else if (isImageType(hints, innerType)) {
     contentType = 'image';
     const imgs = extractImageUrlsFromObjects(objects);
     imageUrls = imgs.imageUrls;
@@ -527,6 +742,14 @@ function normalizeQianfanMessage(rawMessage) {
   if (isBadDisplayText(text)) {
     contentType = 'unknown';
     text = '【未知消息】';
+  }
+
+  const extractedOrder = extractOrderInfo(objects);
+  if (plainOrderNo) {
+    orderInfo = mergeOrderInfo(orderInfo, { orderId: plainOrderNo });
+  }
+  if (extractedOrder.orderId || extractedOrder.amount || extractedOrder.productTitle || extractedOrder.orderDate) {
+    orderInfo = mergeOrderInfo(orderInfo, extractedOrder);
   }
 
   return {
@@ -801,12 +1024,36 @@ function extractBuyerMessagesFromWsPayload(payload, shopTitle) {
   return sessionMsgs.filter(isWsBuyerCandidate);
 }
 
+function looksLikePlainOrderNumber(text) {
+  const s = String(text || '').trim();
+  if (!s || /\s/.test(s)) return '';
+  if (/^P\d{8,}$/i.test(s)) return s.toUpperCase();
+  if (/^\d{12,20}$/.test(s)) return s;
+  return '';
+}
+
+function shouldForwardImagesForMessage(message) {
+  const type = String(message?.contentType || '').toLowerCase();
+  if (type === 'image') return true;
+  if (type === 'product') {
+    return Boolean(
+      message?.productInfo?.imageUrl ||
+      (Array.isArray(message?.productInfo?.imageUrls) && message.productInfo.imageUrls.length) ||
+      (Array.isArray(message?.imageUrls) && message.imageUrls.length)
+    );
+  }
+  if (type === 'video') return Boolean(message?.videoInfo?.coverUrl);
+  return false;
+}
+
 function collectMessageImageUrls(message) {
+  if (!shouldForwardImagesForMessage(message)) return [];
   const urls = [...(message?.imageUrls || [])];
   if (message?.thumbUrl) urls.push(message.thumbUrl);
   if (message?.productInfo?.imageUrl) urls.push(message.productInfo.imageUrl);
+  if (Array.isArray(message?.productInfo?.imageUrls)) urls.push(...message.productInfo.imageUrls);
   if (message?.videoInfo?.coverUrl) urls.push(message.videoInfo.coverUrl);
-  return [...new Set(urls.filter(isHttpUrl))];
+  return filterForwardableImageUrls(urls);
 }
 
 module.exports = {
@@ -819,6 +1066,10 @@ module.exports = {
   extractImageUrlsFromObjects,
   isHttpUrl,
   collectMessageImageUrls,
+  shouldForwardImagesForMessage,
+  isLikelyAvatarOrProfileUrl,
+  filterForwardableImageUrls,
+  looksLikePlainOrderNumber,
   logUnknownMessageType,
   normalizeCreateAtMs,
   isBuyerMessageItem,
@@ -831,4 +1082,11 @@ module.exports = {
   extractBuyerMessagesFromWsPayload,
   isWsBuyerCandidate,
   isSellerSideSender,
+  collectNestedObjects,
+  extractOrderInfo,
+  mergeOrderInfo,
+  formatOrderInfoForNotice,
+  formatOrderInfoLines,
+  pickOrderInfoFromMessages,
+  resolveAfterSaleLabel,
 };
