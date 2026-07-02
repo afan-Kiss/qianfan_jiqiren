@@ -29,9 +29,14 @@ function testStatic() {
   assert(coreSrc.includes('markCredentialExpired'));
   assert(coreSrc.includes('pollHttpHistory'));
 
+  const bridgeSrc = read('src/protocol/qianfan-protocol-bridge-server.js');
+  assert(bridgeSrc.includes('/health'));
+  assert(bridgeSrc.includes('/send'));
+
   const pkg = JSON.parse(read('package.json'));
   assert(pkg.scripts['qf:protocol:daemon']);
   assert(pkg.scripts['qf:protocol:config-agent']);
+  assert(pkg.scripts['qf:protocol:bridge']);
 
   console.log('[check] static OK');
 }

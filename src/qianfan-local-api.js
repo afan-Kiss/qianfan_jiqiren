@@ -253,11 +253,13 @@ async function startQianfanLocalApi(options = {}) {
               return;
             }
             const { isProtocolImSendAllowed } = require('./protocol/qianfan-protocol-send-guard');
-            const buyerNick = String(body.buyerNick || '饭饭').trim();
-            if (body.reallySend && !isProtocolImSendAllowed(buyerNick)) {
+            const buyerNick = String(body.buyerNick || '').trim();
+            if (body.reallySend && buyerNick && !isProtocolImSendAllowed(buyerNick)) {
+              const { getSendOnlyBuyerNick } = require('./qianfan-send-guard');
+              const allowed = getSendOnlyBuyerNick();
               sendJson(res, 403, {
                 ok: false,
-                error: `纯协议 IM 仅允许向「饭饭」发送，当前 buyerNick=${buyerNick || '(空)'}`,
+                error: `[千帆发送] 安全规则：仅允许向「${allowed}」发送消息，当前 buyerNick=${buyerNick}`,
               });
               return;
             }

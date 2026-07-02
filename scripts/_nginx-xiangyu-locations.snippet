@@ -1,0 +1,31 @@
+# 注入到 /etc/aa_nginx/conf.d/zhubo-analysis.conf 的 location 块（放在 location / 之前）
+    # xiangyuxitong（祥钰打包拍照，HTTPS 拍照）
+    location /xiangyuxitong/ {
+        proxy_pass http://127.0.0.1:35871/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 30m;
+    }
+
+    location = /xiangyuxitong {
+        return 301 /xiangyuxitong/;
+    }
+
+    # qianfan-protocol-bridge（祥钰发消息桥接）
+    location /xiangyuxitong-bridge/ {
+        proxy_pass http://127.0.0.1:35872/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        client_max_body_size 30m;
+    }
+
+    location = /xiangyuxitong-bridge {
+        return 301 /xiangyuxitong-bridge/;
+    }

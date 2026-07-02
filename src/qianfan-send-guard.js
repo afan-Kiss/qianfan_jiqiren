@@ -15,7 +15,7 @@ function getSendOnlyBuyerNick() {
   if (Object.prototype.hasOwnProperty.call(qd, 'sendOnlyBuyerNick')) {
     return String(qd.sendOnlyBuyerNick || '').trim();
   }
-  return '饭饭';
+  return '';
 }
 
 function isSendOnlyBuyerNickEnabled() {

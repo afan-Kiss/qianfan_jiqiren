@@ -10,10 +10,16 @@ const { applyTapToShopConfig } = require('./qianfan-protocol-tap-config');
 const { loadLiveSnapshot } = require('./qianfan-live-context-extractor');
 const { isImpaasSendWsUrl } = require('./qianfan-protocol-ws-routing');
 const {
-  PROTOCOL_IM_ALLOWED_BUYER,
-  isProtocolImSendAllowed,
   assertProtocolImSendAllowed,
+  assertProtocolBridgeSendAllowed,
 } = require('./qianfan-protocol-send-guard');
+const { buildImagePayloadFromManualSample } = require('./qianfan-protocol-image');
+const { uploadImageFromBase64, uploadImageFromPath } = require('./qianfan-protocol-eva-upload');
+const {
+  resolveSessionFromStore,
+  persistSession,
+  buildReceiverAppUid,
+} = require('./qianfan-protocol-session-store');
 
 const serviceCache = new Map();
 
@@ -76,6 +82,18 @@ function mergeShopConfig(builtConfig, snapshot, existing, tapApplied) {
   if (existing?.manualSamples?.textSendPayload && !Object.keys(out.manualSamples?.textSendPayload || {}).length) {
     out.manualSamples = out.manualSamples || {};
     out.manualSamples.textSendPayload = existing.manualSamples.textSendPayload;
+  }
+  if (existing?.manualSamples?.imageSendPayload && !Object.keys(out.manualSamples?.imageSendPayload || {}).length) {
+    out.manualSamples = out.manualSamples || {};
+    out.manualSamples.imageSendPayload = existing.manualSamples.imageSendPayload;
+  }
+  if (existing?.httpTemplates?.imageUpload?.url && !out.httpTemplates?.imageUpload?.url) {
+    out.httpTemplates = out.httpTemplates || {};
+    out.httpTemplates.imageUpload = existing.httpTemplates.imageUpload;
+  }
+  if (existing?.httpTemplates?.imageUploadFlow?.length && !out.httpTemplates?.imageUploadFlow?.length) {
+    out.httpTemplates = out.httpTemplates || {};
+    out.httpTemplates.imageUploadFlow = existing.httpTemplates.imageUploadFlow;
   }
   if (existing?.testTarget?.appCid && !out.testTarget?.appCid) {
     out.testTarget = out.testTarget || {};
@@ -190,7 +208,7 @@ class QianfanProtocolService {
     if (target.appCid) {
       sessions.push({
         appCid: target.appCid,
-        buyerNick: target.buyerNick || PROTOCOL_IM_ALLOWED_BUYER,
+        buyerNick: target.buyerNick || '',
         receiverAppUids: target.receiverAppUids || [],
         source: 'testTarget',
       });
@@ -204,7 +222,238 @@ class QianfanProtocolService {
         source: 'manualSamples',
       });
     }
+    const imgSample = this.config?.manualSamples?.imageSendPayload?.body;
+    if (imgSample?.appCid && !sessions.find((s) => s.appCid === imgSample.appCid)) {
+      sessions.push({
+        appCid: imgSample.appCid,
+        buyerNick: target.buyerNick || '',
+        receiverAppUids: imgSample.receiverAppUids || [],
+        source: 'manualSamples.image',
+      });
+    }
     return sessions;
+  }
+
+  resolveBridgeSession(body = {}) {
+    const fromStore = resolveSessionFromStore({
+      shopTitle: body.shopTitle || this.shopTitle,
+      buyerNick: body.buyerNick,
+      buyerUserId: body.buyerUserId,
+      appCid: body.appCid,
+      receiverAppUids: body.receiverAppUids,
+    });
+    if (fromStore) return fromStore;
+
+    const cid = String(body.appCid || '').trim();
+    const uid = String(body.buyerUserId || '').trim();
+    const recv =
+      Array.isArray(body.receiverAppUids) && body.receiverAppUids.length
+        ? body.receiverAppUids
+        : uid
+          ? [buildReceiverAppUid(uid)].filter(Boolean)
+          : [];
+    if (cid) {
+      return {
+        shopTitle: body.shopTitle || this.shopTitle,
+        appCid: cid,
+        buyerNick: body.buyerNick || '',
+        buyerUserId: uid,
+        receiverAppUids: recv,
+        source: 'request',
+      };
+    }
+    return null;
+  }
+
+  async openSession(body = {}) {
+    const shopTitle = String(body.shopTitle || this.shopTitle || '').trim();
+    const buyerNick = String(body.buyerNick || '').trim();
+    const buyerUserId = String(body.buyerUserId || '').trim();
+    if (!buyerUserId) {
+      throw new Error('缺少买家信息，无法打开聊天');
+    }
+
+    const existing = this.resolveBridgeSession(body);
+    if (existing?.appCid) {
+      return { ok: true, created: false, session: existing };
+    }
+
+    const derivedReceiver = buildReceiverAppUid(buyerUserId);
+    return {
+      ok: true,
+      created: true,
+      pending: true,
+      session: {
+        appCid: '',
+        receiverAppUids: derivedReceiver ? [derivedReceiver] : [],
+        buyerNick,
+        shopTitle,
+        buyerUserId,
+        source: 'protocol_derived',
+      },
+      message: '买家 receiver 已推导，请携带订单 appCid 发送或等待会话缓存更新',
+    };
+  }
+
+  async sendTextForBridge({
+    appCid,
+    receiverAppUids,
+    text,
+    buyerNick,
+    buyerUserId,
+    shopTitle,
+    reallySend = true,
+  }) {
+    const session = this.resolveBridgeSession({
+      shopTitle: shopTitle || this.shopTitle,
+      appCid,
+      receiverAppUids,
+      buyerNick,
+      buyerUserId,
+    });
+    const nick = buyerNick || session?.buyerNick || '';
+    assertProtocolBridgeSendAllowed(nick, 'protocol_bridge_text');
+
+    const sendAppCid = String(appCid || session?.appCid || '').trim();
+    const sendUids =
+      (Array.isArray(receiverAppUids) && receiverAppUids.length
+        ? receiverAppUids
+        : session?.receiverAppUids) || [];
+    if (!sendAppCid) {
+      throw new Error('缺少 appCid，请先 open-session 或在订单中带 appCid');
+    }
+    if (!sendUids.length) {
+      throw new Error('缺少 receiverAppUids');
+    }
+
+    if (reallySend) {
+      await this.client.openWsForSend();
+    }
+    const result = await this.client.sendText({
+      appCid: sendAppCid,
+      receiverAppUids: sendUids,
+      text,
+      reallySend,
+      verifyList: false,
+      buyerNick: nick,
+    });
+    this.stats.sends += 1;
+    if (reallySend && result.ok) {
+      persistSession({
+        shopTitle: shopTitle || this.shopTitle,
+        appCid: sendAppCid,
+        buyerUserId: buyerUserId || session?.buyerUserId,
+        buyerNick: nick,
+        receiverAppUids: sendUids,
+      });
+    }
+    return {
+      ...result,
+      buyerNick: nick,
+      appCid: sendAppCid,
+      pureOnly: true,
+      method: 'node_ws',
+      session: { ...session, appCid: sendAppCid, receiverAppUids: sendUids },
+    };
+  }
+
+  async sendImageForBridge({
+    appCid,
+    receiverAppUids,
+    buyerNick,
+    buyerUserId,
+    shopTitle,
+    imageBase64,
+    imagePath,
+    width = 0,
+    height = 0,
+    reallySend = true,
+  }) {
+    const session = this.resolveBridgeSession({
+      shopTitle: shopTitle || this.shopTitle,
+      appCid,
+      receiverAppUids,
+      buyerNick,
+      buyerUserId,
+    });
+    const nick = buyerNick || session?.buyerNick || '';
+    assertProtocolBridgeSendAllowed(nick, 'protocol_bridge_image');
+
+    const sendAppCid = String(appCid || session?.appCid || '').trim();
+    const sendUids =
+      (Array.isArray(receiverAppUids) && receiverAppUids.length
+        ? receiverAppUids
+        : session?.receiverAppUids) || [];
+    if (!sendAppCid) throw new Error('缺少 appCid');
+    if (!sendUids.length) throw new Error('缺少 receiverAppUids');
+
+    let uploadResult = null;
+    if (imageBase64) {
+      uploadResult = await uploadImageFromBase64(this.config, imageBase64, { width, height });
+    } else if (imagePath) {
+      uploadResult = await uploadImageFromPath(this.config, imagePath, { width, height });
+    } else {
+      throw new Error('请先拍照或选图');
+    }
+    if (!uploadResult.ok) {
+      throw new Error(uploadResult.error || '图片上传失败');
+    }
+
+    if (reallySend) {
+      await this.client.openWsForSend();
+    }
+
+    const seq = (this.client?.lastSeq || this.config?.lastSeq || 0) + 1;
+    const built = buildImagePayloadFromManualSample({
+      shopConfig: this.config,
+      appCid: sendAppCid,
+      receiverAppUids: sendUids,
+      uploadResult: { resource: uploadResult.resource },
+      seq,
+    });
+    if (!built.ok || !built.payload) {
+      throw new Error(built.error || '图片 payload 构建失败');
+    }
+
+    const content = built.payload?.body?.contentInfo?.content;
+    if (content && typeof content === 'object' && uploadResult.resource) {
+      content.width = uploadResult.width || width || content.width || 1080;
+      content.height = uploadResult.height || height || content.height || 1920;
+      content.extension = content.extension || {};
+      content.extension.resource = JSON.stringify(uploadResult.resource);
+      if (built.payload.body.extension?.additionInfo) {
+        built.payload.body.extension.additionInfo = JSON.stringify({ extType: '' });
+      }
+    }
+
+    let sendResult = { ok: false, skipped: true };
+    if (reallySend) {
+      sendResult = await this.client.sendRawWsPayload(built.payload, { reallySend: true });
+      this.client.closeWs();
+      if (sendResult.ok) {
+        persistSession({
+          shopTitle: shopTitle || this.shopTitle,
+          appCid: sendAppCid,
+          buyerUserId: buyerUserId || session?.buyerUserId,
+          buyerNick: nick,
+          receiverAppUids: sendUids,
+        });
+      }
+    }
+
+    this.stats.sends += 1;
+    return {
+      ok: sendResult.ok,
+      uploadResult,
+      built,
+      sendResult,
+      buyerNick: nick,
+      appCid: sendAppCid,
+      pureOnly: true,
+      method: 'node_ws',
+      traceId: built.traceId,
+      msgId: sendResult.ack?.msgId || '',
+    };
   }
 
   listSessions() {
@@ -212,14 +461,14 @@ class QianfanProtocolService {
   }
 
   resolveSendTarget(appCid, buyerNick) {
-    const fanfan = this.sessions.find((s) => isProtocolImSendAllowed(s.buyerNick));
-    if (fanfan) return { ...fanfan, source: fanfan.source || 'protocol_whitelist_session' };
+    const resolved = this.resolveSession(appCid, buyerNick);
+    if (resolved?.appCid) return resolved;
 
     const target = this.config?.testTarget || {};
-    if (isProtocolImSendAllowed(target.buyerNick) && target.appCid) {
+    if (target.appCid) {
       return {
         appCid: target.appCid,
-        buyerNick: target.buyerNick || PROTOCOL_IM_ALLOWED_BUYER,
+        buyerNick: target.buyerNick || '',
         receiverAppUids: target.receiverAppUids || [],
         source: 'testTarget',
       };
@@ -334,7 +583,7 @@ class QianfanProtocolService {
 
     if (reallySend) {
       if (!session?.appCid) {
-        throw new Error(`[千帆协议IM] 仅允许向「${PROTOCOL_IM_ALLOWED_BUYER}」发送，未找到饭饭会话 appCid`);
+        throw new Error(`[千帆协议IM] 未找到目标买家「${nick || '(未知)'}」的会话 appCid`);
       }
       assertProtocolImSendAllowed(nick, 'protocol_im_send');
     }

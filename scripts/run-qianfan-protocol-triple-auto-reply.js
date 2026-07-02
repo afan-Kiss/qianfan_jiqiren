@@ -12,10 +12,9 @@ const {
   readExistingLocalConfig,
   disableFixtureShops,
 } = require('../src/protocol/qianfan-live-context-extractor');
-const {
-  isProtocolImSendAllowed,
-  PROTOCOL_IM_ALLOWED_BUYER,
-} = require('../src/protocol/qianfan-protocol-send-guard');
+const { isProtocolImSendAllowed } = require('../src/protocol/qianfan-protocol-send-guard');
+
+const PROTOCOL_TEST_BUYER = '饭饭';
 const { isIgnoredMessage, isWsBuyerCandidate, normalizeCreateAtMs } = require('../src/chat-parse');
 const { resolveProtocolWsEndpoints } = require('../src/protocol/qianfan-protocol-ws-routing');
 
@@ -107,7 +106,7 @@ async function buildShopConfig(shopTitle) {
       origin: 'https://walle.xiaohongshu.com',
       referer: 'https://walle.xiaohongshu.com/',
       ws: { url: 'wss://apppush-wss.xiaohongshu.com/longlink' },
-      testTarget: { buyerNick: PROTOCOL_IM_ALLOWED_BUYER },
+      testTarget: { buyerNick: PROTOCOL_TEST_BUYER },
     };
   }
 
@@ -120,7 +119,7 @@ async function buildShopConfig(shopTitle) {
   const config = tapApplied.config;
   if (!config.testTarget?.buyerNick) {
     config.testTarget = config.testTarget || {};
-    config.testTarget.buyerNick = PROTOCOL_IM_ALLOWED_BUYER;
+    config.testTarget.buyerNick = PROTOCOL_TEST_BUYER;
   }
   config.shopTitle = shopTitle;
   config.enabled = true;
@@ -146,13 +145,13 @@ function rememberFanfanSession(config, discovered, msg) {
     (String(msg?.raw?.senderAppUid || '').trim());
   const row = {
     appCid,
-    buyerNick: msg.buyerNick || PROTOCOL_IM_ALLOWED_BUYER,
+    buyerNick: msg.buyerNick || PROTOCOL_TEST_BUYER,
     receiverAppUids: receiver ? [receiver] : config?.testTarget?.receiverAppUids || [],
   };
   discovered.set(appCid, row);
   if (isProtocolImSendAllowed(row.buyerNick) && (receiver.includes('60213afd') || receiver.includes('0055fd'))) {
     config.testTarget = config.testTarget || {};
-    config.testTarget.buyerNick = PROTOCOL_IM_ALLOWED_BUYER;
+    config.testTarget.buyerNick = PROTOCOL_TEST_BUYER;
     config.testTarget.appCid = appCid;
     config.testTarget.receiverAppUids = row.receiverAppUids;
   }
@@ -246,7 +245,7 @@ class ShopAutoReplier {
         text: REPLY_TEXT,
         reallySend: true,
         verifyList: false,
-        buyerNick: msg.buyerNick || PROTOCOL_IM_ALLOWED_BUYER,
+        buyerNick: msg.buyerNick || PROTOCOL_TEST_BUYER,
       });
       console.log(
         `[triple-reply][reply] ${this.shopTitle} ok=${result.ok} ack=${result.ack?.msgId || '-'} err=${result.error || result.reason || ''}`
